@@ -1,4 +1,4 @@
-# FAZ 1 — Temel
+# ═══ Zorunlu (Streamlit Cloud'da yüklenmesi gereken) ═══
 streamlit>=1.30.0
 numpy>=1.24.0
 pandas>=2.0.0
@@ -6,19 +6,14 @@ matplotlib>=3.7.0
 shapely>=2.0.0
 sqlalchemy>=2.0.0
 Pillow>=10.0.0
-
-# FAZ 3 — AI
-anthropic>=0.30.0
-openai>=1.30.0
 requests>=2.31.0
-
-# FAZ 5 — 3D
 plotly>=5.18.0
+reportlab>=4.0.0
 
-# FAZ 6 — Harita & Güneş
+# ═══ Opsiyonel — yoksa demo/fallback modda çalışır ═══
 folium>=0.15.0
 streamlit-folium>=0.18.0
 
-# FAZ 7 — Rapor
-reportlab>=4.0.0
-networkx>=3.2.0
+# NOT: anthropic ve openai requirements'tan çıkarıldı.
+# Streamlit Cloud'da 1GB RAM sınırı var, bu paketler ~150MB.
+# Tüm modüller API olmadan demo modda çalışır.

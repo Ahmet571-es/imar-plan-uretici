@@ -5,13 +5,13 @@ Sayfa modülleri: Mali Fizibilite, Deprem, Enerji, Gantt, Parsel Karşılaştır
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 
 def sayfa_fizibilite():
     """Sayfa 10 — Mali Fizibilite."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
     from analysis.cost_estimator import hesapla_maliyet
     from analysis.revenue_estimator import hesapla_gelir
     from analysis.feasibility import hesapla_fizibilite, duyarlilik_analizi, create_sensitivity_heatmap
@@ -167,6 +167,9 @@ def sayfa_deprem():
 
 def sayfa_enerji():
     """Sayfa 12 — Enerji Performans Tahmini."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
     from analysis.energy_performance import enerji_performans_hesapla, ENERJI_SINIFLARI
 
     st.header("⚡ Enerji Performans Tahmini")

@@ -641,19 +641,60 @@ def sayfa_daire():
 
 
 # ═══════════════════════════════════════════════════════════════
-# SAYFA İMPORTLARI (FAZ 2-7 Modülleri)
+# SAYFA İMPORTLARI — LAZY LOADING (Bellek optimizasyonu)
+# Her sayfa sadece açıldığında yüklenir, başlangıçta RAM kullanmaz.
 # ═══════════════════════════════════════════════════════════════
-from pages.pages_design import sayfa_plan, sayfa_ai_tefris, sayfa_3d, sayfa_render
-from pages.pages_analysis import sayfa_fizibilite, sayfa_deprem, sayfa_enerji, sayfa_gantt, sayfa_karsilastir
-from pages.pages_other import sayfa_konum, sayfa_irtifak, sayfa_ruhsat, sayfa_muteahhit, sayfa_rapor, sayfa_firsat, sayfa_piyasa
 
+def sayfa_plan():
+    from pages.pages_design import sayfa_plan as _f; _f()
 
 def sayfa_ai():
-    sayfa_ai_tefris()
+    from pages.pages_design import sayfa_ai_tefris as _f; _f()
+
+def sayfa_3d():
+    from pages.pages_design import sayfa_3d as _f; _f()
+
+def sayfa_render():
+    from pages.pages_design import sayfa_render as _f; _f()
+
+def sayfa_fizibilite():
+    from pages.pages_analysis import sayfa_fizibilite as _f; _f()
+
+def sayfa_deprem():
+    from pages.pages_analysis import sayfa_deprem as _f; _f()
+
+def sayfa_enerji():
+    from pages.pages_analysis import sayfa_enerji as _f; _f()
+
+def sayfa_gantt():
+    from pages.pages_analysis import sayfa_gantt as _f; _f()
+
+def sayfa_karsilastir():
+    from pages.pages_analysis import sayfa_karsilastir as _f; _f()
+
+def sayfa_konum():
+    from pages.pages_other import sayfa_konum as _f; _f()
+
+def sayfa_irtifak():
+    from pages.pages_other import sayfa_irtifak as _f; _f()
+
+def sayfa_ruhsat():
+    from pages.pages_other import sayfa_ruhsat as _f; _f()
+
+def sayfa_muteahhit():
+    from pages.pages_other import sayfa_muteahhit as _f; _f()
+
+def sayfa_rapor():
+    from pages.pages_other import sayfa_rapor as _f; _f()
+
+def sayfa_firsat():
+    from pages.pages_other import sayfa_firsat as _f; _f()
+
+def sayfa_piyasa():
+    from pages.pages_other import sayfa_piyasa as _f; _f()
 
 def sayfa_ajan_panel():
-    from agents.agent_dashboard import render_agent_dashboard
-    render_agent_dashboard()
+    from agents.agent_dashboard import render_agent_dashboard; render_agent_dashboard()
 
 
 # ── Placeholder'lar (Dış API gerektiren sayfalar) ──
