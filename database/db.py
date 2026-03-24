@@ -1,0 +1,86 @@
+"""
+Database Bağlantı Yönetimi — SQLAlchemy + SQLite.
+"""
+
+import os
+from datetime import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, JSON
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+# Veritabanı yolu
+DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database")
+os.makedirs(DB_DIR, exist_ok=True)
+DB_PATH = os.path.join(DB_DIR, "imar_plan.db")
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# SQLAlchemy engine ve session
+engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+Base = declarative_base()
+
+
+# ── Modeller ──
+
+class Proje(Base):
+    """Proje kaydı."""
+    __tablename__ = "projeler"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    proje_adi = Column(String(200), default="Yeni Proje")
+    il = Column(String(50), default="")
+    ilce = Column(String(50), default="")
+    mahalle = Column(String(100), default="")
+    ada = Column(String(20), default="")
+    parsel = Column(String(20), default="")
+    parsel_alani = Column(Float, default=0.0)
+    kat_sayisi = Column(Integer, default=4)
+    taks = Column(Float, default=0.35)
+    kaks = Column(Float, default=1.40)
+    toplam_insaat = Column(Float, default=0.0)
+    durum = Column(String(50), default="Ön Araştırma")
+    olusturma_tarihi = Column(DateTime, default=datetime.utcnow)
+    guncelleme_tarihi = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    notlar = Column(Text, default="")
+    veri_json = Column(JSON, default=dict)  # Tüm proje verisi JSON olarak
+
+
+class FiyatVerisi(Base):
+    """İlçe bazlı fiyat verisi."""
+    __tablename__ = "fiyat_verileri"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    il = Column(String(50))
+    ilce = Column(String(50))
+    daire_tipi = Column(String(10))  # "1+1", "2+1", vb.
+    m2_fiyat = Column(Float)
+    kaynak = Column(String(50))  # "sahibinden", "hepsiemlak", "tcmb"
+    tarih = Column(DateTime, default=datetime.utcnow)
+
+
+class ImarCache(Base):
+    """İmar bilgisi cache."""
+    __tablename__ = "imar_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    il = Column(String(50))
+    ilce = Column(String(50))
+    ada = Column(String(20))
+    parsel_no = Column(String(20))
+    imar_verisi = Column(JSON)
+    son_sorgu = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Tablo oluşturma ──
+
+def init_db():
+    """Veritabanı tablolarını oluşturur."""
+    Base.metadata.create_all(bind=engine)
+
+
+def get_session():
+    """Yeni bir DB oturumu döndürür."""
+    return SessionLocal()
+
+
+# Uygulama başlangıcında tabloları oluştur
+init_db()

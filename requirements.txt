@@ -1,0 +1,8 @@
+# FAZ 1 — Temel bağımlılıklar
+streamlit>=1.30.0
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+shapely>=2.0.0
+sqlalchemy>=2.0.0
+Pillow>=10.0.0
