@@ -1,4 +1,4 @@
-# FAZ 1 — Temel bağımlılıklar
+# FAZ 1 — Temel
 streamlit>=1.30.0
 numpy>=1.24.0
 pandas>=2.0.0
@@ -6,3 +6,19 @@ matplotlib>=3.7.0
 shapely>=2.0.0
 sqlalchemy>=2.0.0
 Pillow>=10.0.0
+
+# FAZ 3 — AI
+anthropic>=0.30.0
+openai>=1.30.0
+requests>=2.31.0
+
+# FAZ 5 — 3D
+plotly>=5.18.0
+
+# FAZ 6 — Harita & Güneş
+folium>=0.15.0
+streamlit-folium>=0.18.0
+
+# FAZ 7 — Rapor
+reportlab>=4.0.0
+networkx>=3.2.0
