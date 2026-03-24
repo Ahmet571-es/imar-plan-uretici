@@ -35,22 +35,79 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Session State Başlangıç ──
-if "aktif_sayfa" not in st.session_state:
-    st.session_state.aktif_sayfa = "1_parsel"
-if "parsel" not in st.session_state:
-    st.session_state.parsel = None
-if "imar" not in st.session_state:
-    st.session_state.imar = None
-if "hesaplama" not in st.session_state:
-    st.session_state.hesaplama = None
-if "bina_programi" not in st.session_state:
-    st.session_state.bina_programi = None
+# ── Otomatik Kalıcılık Sistemi ──
+# Her değişiklikte /tmp'ye otomatik kaydet, sayfa yenilendiğinde otomatik yükle.
+# Kullanıcı hiçbir şey yapmak zorunda değil.
+
+import json as _json
+import os as _os
+
+_AUTOSAVE_PATH = "/tmp/imar_plan_autosave.json"
+
+
+def _auto_save():
+    """Session state'i /tmp'ye otomatik kaydet."""
+    try:
+        data = {"aktif_sayfa": st.session_state.get("aktif_sayfa", "1_parsel")}
+        if st.session_state.get("parsel"):
+            p = st.session_state.parsel
+            data["parsel"] = {"koordinatlar": p.koordinatlar, "yon": p.yon}
+        if st.session_state.get("imar"):
+            im = st.session_state.imar
+            data["imar"] = {
+                "kat_adedi": im.kat_adedi, "insaat_nizami": im.insaat_nizami,
+                "taks": im.taks, "kaks": im.kaks,
+                "on_bahce": im.on_bahce, "yan_bahce": im.yan_bahce, "arka_bahce": im.arka_bahce,
+                "siginak_gerekli": im.siginak_gerekli, "otopark_gerekli": im.otopark_gerekli,
+            }
+        if st.session_state.get("claude_api_key"):
+            data["claude_api_key"] = st.session_state.claude_api_key
+        if st.session_state.get("grok_api_key"):
+            data["grok_api_key"] = st.session_state.grok_api_key
+
+        with open(_AUTOSAVE_PATH, "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _auto_load():
+    """Sayfa yenilendiğinde /tmp'den otomatik yükle."""
+    if not _os.path.exists(_AUTOSAVE_PATH):
+        return
+    try:
+        with open(_AUTOSAVE_PATH) as f:
+            data = _json.load(f)
+
+        if "parsel" in data and st.session_state.get("parsel") is None:
+            from core.parcel import Parsel
+            coords = [tuple(c) for c in data["parsel"]["koordinatlar"]]
+            st.session_state.parsel = Parsel.from_koordinatlar(coords, yon=data["parsel"].get("yon", "kuzey"))
+
+        if "imar" in data and st.session_state.get("imar") is None:
+            from core.zoning import ImarParametreleri
+            st.session_state.imar = ImarParametreleri(**data["imar"])
+
+        if st.session_state.get("parsel") and st.session_state.get("imar") and st.session_state.get("hesaplama") is None:
+            from core.zoning import hesapla
+            st.session_state.hesaplama = hesapla(st.session_state.parsel.polygon, st.session_state.imar)
+
+        if "aktif_sayfa" in data:
+            st.session_state.aktif_sayfa = data["aktif_sayfa"]
+
+        if "claude_api_key" in data and not st.session_state.get("claude_api_key"):
+            st.session_state.claude_api_key = data["claude_api_key"]
+            _os.environ["ANTHROPIC_API_KEY"] = data["claude_api_key"]
+        if "grok_api_key" in data and not st.session_state.get("grok_api_key"):
+            st.session_state.grok_api_key = data["grok_api_key"]
+            _os.environ["XAI_API_KEY"] = data["grok_api_key"]
+
+    except Exception:
+        pass
 
 
 def _save_project_json() -> str:
-    """Mevcut proje verilerini JSON olarak dışa aktar."""
-    import json
+    """Mevcut proje verilerini JSON olarak dışa aktar (manuel indirme için)."""
     data = {}
     if st.session_state.get("parsel"):
         p = st.session_state.parsel
@@ -63,28 +120,38 @@ def _save_project_json() -> str:
             "on_bahce": im.on_bahce, "yan_bahce": im.yan_bahce, "arka_bahce": im.arka_bahce,
             "siginak_gerekli": im.siginak_gerekli, "otopark_gerekli": im.otopark_gerekli,
         }
-    return json.dumps(data, ensure_ascii=False, indent=2)
+    return _json.dumps(data, ensure_ascii=False, indent=2)
 
 
 def _load_project_json(json_str: str):
-    """JSON'dan proje verilerini yükle."""
-    import json
+    """JSON'dan proje verilerini yükle (manuel yükleme için)."""
     from core.parcel import Parsel
     from core.zoning import ImarParametreleri, hesapla
 
-    data = json.loads(json_str)
-
+    data = _json.loads(json_str)
     if "parsel" in data:
         coords = [tuple(c) for c in data["parsel"]["koordinatlar"]]
         st.session_state.parsel = Parsel.from_koordinatlar(coords, yon=data["parsel"].get("yon", "kuzey"))
-
     if "imar" in data:
-        im = data["imar"]
-        st.session_state.imar = ImarParametreleri(**im)
-
-    # Hesaplamayı yeniden yap
+        st.session_state.imar = ImarParametreleri(**data["imar"])
     if st.session_state.get("parsel") and st.session_state.get("imar"):
         st.session_state.hesaplama = hesapla(st.session_state.parsel.polygon, st.session_state.imar)
+
+
+# ── Session State Başlangıç ──
+if "aktif_sayfa" not in st.session_state:
+    st.session_state.aktif_sayfa = "1_parsel"
+if "parsel" not in st.session_state:
+    st.session_state.parsel = None
+if "imar" not in st.session_state:
+    st.session_state.imar = None
+if "hesaplama" not in st.session_state:
+    st.session_state.hesaplama = None
+if "bina_programi" not in st.session_state:
+    st.session_state.bina_programi = None
+
+# Sayfa yenilendiğinde otomatik yükle
+_auto_load()
 
 # ── Sidebar Navigasyon ──
 with st.sidebar:
@@ -209,20 +276,26 @@ with st.sidebar:
 
     st.caption("v1.0 — FAZ 1-7 + Ajan Sistemi")
 
-    # ── Proje Kaydet / Yükle ──
-    with st.expander("💾 Proje Kaydet / Yükle", expanded=False):
-        st.caption("Sayfa yenilendiğinde verilerinizi kaybetmemek için projeyi kaydedin.")
+    # ── Otomatik Kaydetme Durumu ──
+    has_data = st.session_state.get("parsel") is not None or st.session_state.get("imar") is not None
+    if has_data:
+        st.caption("💾 Veriler otomatik kaydediliyor")
 
-        if st.session_state.get("parsel") or st.session_state.get("imar"):
+    # ── Proje Yedek / Yükle ──
+    with st.expander("💾 Proje Yedek / Geri Yükle", expanded=False):
+        st.caption("Verileriniz otomatik kaydedilir. Farklı cihazda devam etmek için yedek alın.")
+
+        if has_data:
             json_data = _save_project_json()
-            st.download_button("💾 Projeyi İndir (JSON)", json_data,
-                               "proje_kayit.json", "application/json",
+            st.download_button("💾 Yedek İndir (JSON)", json_data,
+                               "proje_yedek.json", "application/json",
                                use_container_width=True)
 
-        uploaded = st.file_uploader("📂 Proje Yükle", type="json", key="proje_upload")
+        uploaded = st.file_uploader("📂 Yedek Yükle", type="json", key="proje_upload")
         if uploaded:
             try:
                 _load_project_json(uploaded.read().decode("utf-8"))
+                _auto_save()
                 st.success("✅ Proje yüklendi!")
                 st.rerun()
             except Exception as e:
@@ -911,3 +984,6 @@ SAYFA_MAP = {
 # Aktif sayfayı göster
 sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
 sayfa_fonksiyonu()
+
+# ── Her render sonrası otomatik kaydet ──
+_auto_save()

@@ -16,6 +16,18 @@ TKGM_WFS_BASE = "https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api/iltce"
 TIMEOUT = 15
 MAX_RETRIES = 3
 
+# TKGM Türkiye dışından erişimi engelleyebilir.
+# Gerçek tarayıcı gibi davranmak için detaylı header'lar kullanıyoruz.
+TKGM_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://parselsorgu.tkgm.gov.tr/",
+    "Origin": "https://parselsorgu.tkgm.gov.tr",
+    "Connection": "keep-alive",
+}
+
 
 @dataclass
 class TKGMParselSonuc:
@@ -91,8 +103,13 @@ def parsel_sorgula(
     except Exception as e:
         logger.warning(f"WFS hatası: {e}")
 
-    sonuc.hata = "TKGM API'ye erişilemedi. Manuel giriş kullanın."
-    logger.error(sonuc.hata)
+    sonuc.hata = (
+        "TKGM API'ye erişilemedi. Olası nedenler:\n"
+        "• TKGM sunucuları geçici olarak yanıt vermiyor\n"
+        "• Streamlit Cloud sunucusu Türkiye dışında — TKGM coğrafi kısıtlama uygulayabilir\n"
+        "→ Manuel Giriş sekmesinden parsel ölçülerini girebilirsiniz."
+    )
+    logger.error(f"TKGM erişilemedi: {il}/{ilce} {ada}/{parsel}")
     return sonuc
 
 
@@ -106,10 +123,7 @@ def _query_cbs_api(il, ilce, mahalle, ada, parsel) -> dict | None:
             resp = requests.get(
                 url,
                 timeout=TIMEOUT,
-                headers={
-                    "User-Agent": "Mozilla/5.0",
-                    "Accept": "application/json",
-                },
+                headers=TKGM_HEADERS,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -151,7 +165,7 @@ def _query_wfs(il, ilce, ada, parsel) -> dict | None:
                 TKGM_WFS_BASE,
                 params=params,
                 timeout=TIMEOUT,
-                headers={"User-Agent": "Mozilla/5.0"},
+                headers=TKGM_HEADERS,
             )
             if resp.status_code == 200:
                 data = resp.json()
