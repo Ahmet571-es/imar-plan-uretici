@@ -8,12 +8,12 @@ import numpy as np
 
 
 def sayfa_plan():
-    """Sayfa 6 — Kat Planı Üretimi (Dual AI)."""
-    from ai.claude_planner import generate_plans_claude, _generate_demo_plans
+    """Sayfa 6 — Kat Planı Üretimi (Profesyonel + Dual AI)."""
+    from core.floor_plan_generator import generate_professional_plan, generate_multiple_plans
     from core.plan_scorer import score_plan, FloorPlan
     from drawing.plan_renderer_matplotlib import render_floor_plan, render_plan_comparison
 
-    st.header("📋 Kat Planı Üretimi — Dual AI")
+    st.header("📋 Kat Planı Üretimi")
 
     if st.session_state.get("hesaplama") is None:
         st.warning("⚠️ Önce hesaplama adımını tamamlayın.")
@@ -23,71 +23,99 @@ def sayfa_plan():
     imar = st.session_state.imar
     bina = st.session_state.get("bina_programi")
 
-    st.info(f"📐 Yapılaşma alanı: {hesap.cekme_sonrasi_alan:.1f} m² | Kat başı net: {hesap.kat_basi_net_alan:.1f} m²")
+    # Yapılaşma alanı boyutları
+    from utils.geometry_helpers import polygon_bounds_boyutlar
+    if hesap.cekme_polygonu:
+        bw, bh = polygon_bounds_boyutlar(hesap.cekme_polygonu)
+        bounds = hesap.cekme_polygonu.bounds
+        ox, oy = bounds[0], bounds[1]
+    else:
+        bw, bh = 16.0, 12.0
+        ox, oy = 0.0, 0.0
+
+    st.info(f"📐 Yapılaşma alanı: {bw:.1f} × {bh:.1f} m | Kat başı net: {hesap.kat_basi_net_alan:.1f} m²")
 
     col1, col2 = st.columns(2)
     with col1:
         daire_tipi = st.selectbox("Daire Tipi", ["1+1", "2+1", "3+1", "4+1"], index=2, key="plan_tip")
-        sun_dir = st.selectbox("Güneş Yönü", ["south", "north", "east", "west"], key="plan_sun")
+        sun_dir = st.selectbox("Güneş Yönü", ["south", "north", "east", "west"],
+                               format_func=lambda x: {"south": "Güney", "north": "Kuzey", "east": "Doğu", "west": "Batı"}[x],
+                               key="plan_sun")
     with col2:
-        plan_sayisi = st.slider("Alternatif Sayısı", 2, 4, 2, key="plan_count")
-        iteration = st.slider("İterasyon", 1, 3, 1, key="plan_iter")
+        plan_sayisi = st.slider("Alternatif Sayısı", 2, 4, 3, key="plan_count")
+        target_alan = st.number_input("Hedef Daire Alanı (m²)",
+                                       50.0, 250.0,
+                                       hesap.kat_basi_net_alan / 2,
+                                       step=5.0, key="plan_target")
 
-    if st.button("🤖 Plan Üret", type="primary", key="btn_generate_plan"):
-        with st.spinner("AI planları üretiyor..."):
-            coords = list(hesap.cekme_polygonu.exterior.coords) if hesap.cekme_polygonu else [(0,0),(16,0),(16,12),(0,12)]
-            apt_program = {
-                "tip": daire_tipi,
-                "brut_alan": hesap.kat_basi_net_alan / 2,
-                "odalar": [],
-            }
-            if bina and bina.katlar and bina.katlar[0].daireler:
-                d = bina.katlar[0].daireler[0]
-                apt_program["odalar"] = [{"isim": o.isim, "tip": o.tip, "m2": o.m2} for o in d.odalar]
+    # Oda programını hazırla
+    room_program = None
+    if bina and bina.katlar and bina.katlar[0].daireler:
+        d = bina.katlar[0].daireler[0]
+        room_program = [{"isim": o.isim, "tip": o.tip, "m2": o.m2} for o in d.odalar]
 
-            # API keyleri al
-            claude_key = st.session_state.get("claude_api_key", "")
-            grok_key = st.session_state.get("grok_api_key", "")
+    tab_pro, tab_ai = st.tabs(["📐 Profesyonel Üretim", "🤖 AI Destekli Üretim"])
 
-            if claude_key or grok_key:
-                # Gerçek Dual AI modu
-                from ai.dual_ai_engine import generate_dual_ai_plans
-                from dataset.dataset_rules import ROOM_SIZE_STATS
-                result = generate_dual_ai_plans(
-                    buildable_polygon_coords=coords,
-                    apartment_program=apt_program,
-                    dataset_rules=ROOM_SIZE_STATS,
-                    sun_best_direction=sun_dir,
-                    claude_api_key=claude_key,
-                    grok_api_key=grok_key,
-                    max_iterations=iteration,
+    with tab_pro:
+        if st.button("📐 Profesyonel Plan Üret", type="primary", key="btn_gen_pro"):
+            with st.spinner(f"{plan_sayisi * 3} varyasyon deneniyor, en iyi {plan_sayisi} seçiliyor..."):
+                plans = generate_multiple_plans(
+                    bw, bh, ox, oy,
+                    room_program=room_program,
+                    apartment_type=daire_tipi,
+                    target_area=target_alan,
+                    sun_direction=sun_dir,
+                    plan_count=plan_sayisi,
                 )
-                scored_plans = []
-                for p in result.best_plans:
-                    scored_plans.append({"plan": p.plan, "score": p.score, "reasoning": p.reasoning})
-                if not scored_plans:
-                    st.warning("AI plan üretemedi, demo moda geçiliyor...")
-                    plans = _generate_demo_plans(coords, apt_program, plan_sayisi)
-                    for p in plans:
-                        fp = p["floor_plan"]
-                        sc = score_plan(fp, sun_best_direction=sun_dir)
-                        scored_plans.append({"plan": fp, "score": sc, "reasoning": p.get("reasoning", "")})
-            else:
-                # Demo mod — API key yoksa
-                plans = _generate_demo_plans(coords, apt_program, plan_sayisi)
-                scored_plans = []
-                for p in plans:
-                    fp = p["floor_plan"]
-                    sc = score_plan(fp, sun_best_direction=sun_dir)
-                    scored_plans.append({"plan": fp, "score": sc, "reasoning": p.get("reasoning", "")})
 
-            scored_plans.sort(key=lambda x: x["score"].total, reverse=True)
-            st.session_state.generated_plans = scored_plans
+                if plans:
+                    st.session_state.generated_plans = [
+                        {"plan": p["floor_plan"], "score": p["score"], "reasoning": p["reasoning"]}
+                        for p in plans
+                    ]
+                else:
+                    st.error("Plan üretilemedi.")
 
-            if not claude_key and not grok_key:
-                st.info("ℹ️ API key girilmedi — algoritmik demo planlar üretildi. Sidebar'dan API key girerek gerçek AI planları alabilirsiniz.")
+    with tab_ai:
+        claude_key = st.session_state.get("claude_api_key", "")
+        grok_key = st.session_state.get("grok_api_key", "")
 
-    if "generated_plans" in st.session_state:
+        if not claude_key and not grok_key:
+            st.info("ℹ️ AI destekli plan üretimi için sidebar'dan API key girin. Profesyonel Üretim sekmesi API key olmadan çalışır.")
+        else:
+            iteration = st.slider("İterasyon Sayısı", 1, 3, 1, key="plan_iter")
+
+            if st.button("🤖 AI Plan Üret", type="primary", key="btn_gen_ai"):
+                with st.spinner("Dual AI planları üretiyor..."):
+                    coords = list(hesap.cekme_polygonu.exterior.coords) if hesap.cekme_polygonu else [(ox,oy),(ox+bw,oy),(ox+bw,oy+bh),(ox,oy+bh)]
+                    apt_program = {"tip": daire_tipi, "brut_alan": target_alan, "odalar": room_program or []}
+
+                    from ai.dual_ai_engine import generate_dual_ai_plans
+                    from dataset.dataset_rules import ROOM_SIZE_STATS
+                    result = generate_dual_ai_plans(
+                        buildable_polygon_coords=coords,
+                        apartment_program=apt_program,
+                        dataset_rules=ROOM_SIZE_STATS,
+                        sun_best_direction=sun_dir,
+                        claude_api_key=claude_key,
+                        grok_api_key=grok_key,
+                        max_iterations=iteration,
+                    )
+                    if result.best_plans:
+                        st.session_state.generated_plans = [
+                            {"plan": p.plan, "score": p.score, "reasoning": p.reasoning}
+                            for p in result.best_plans
+                        ]
+                    else:
+                        st.warning("AI plan üretemedi, profesyonel modda üretiliyor...")
+                        plans = generate_multiple_plans(bw, bh, ox, oy, room_program, daire_tipi, target_alan, sun_dir, plan_sayisi)
+                        st.session_state.generated_plans = [
+                            {"plan": p["floor_plan"], "score": p["score"], "reasoning": p["reasoning"]}
+                            for p in plans
+                        ]
+
+    # ── Plan gösterimi ──
+    if "generated_plans" in st.session_state and st.session_state.generated_plans:
         plans = st.session_state.generated_plans
         st.markdown("---")
         st.subheader(f"🏗️ {len(plans)} Alternatif Plan")
@@ -110,13 +138,24 @@ def sayfa_plan():
                     if plan_data.get("reasoning"):
                         st.info(f"💬 {plan_data['reasoning']}")
 
+                # Oda listesi tablosu
+                if plan_data["plan"].rooms:
+                    st.markdown("**Oda Detayları:**")
+                    import pandas as pd
+                    df = pd.DataFrame([{
+                        "Oda": r.name, "Boyut": f"{r.width:.1f}×{r.height:.1f}m",
+                        "Alan": f"{r.area:.1f} m²", "Cephe": r.facing_direction or "iç",
+                        "Dış Duvar": "✅" if r.has_exterior_wall else "—",
+                    } for r in plan_data["plan"].rooms])
+                    st.dataframe(df, hide_index=True, use_container_width=True)
+
                 if st.button(f"✅ Plan {i+1}'i Seç", key=f"select_plan_{i}"):
                     st.session_state.selected_plan = plan_data
                     st.success(f"Plan {i+1} seçildi!")
 
         if len(plans) >= 2:
             st.markdown("---")
-            st.subheader("📊 Karşılaştırma")
+            st.subheader("📊 Yan Yana Karşılaştırma")
             fig_comp = render_plan_comparison(
                 [p["plan"] for p in plans],
                 [f"Alt. {i+1} ({p['score'].total:.0f}p)" for i, p in enumerate(plans)]
