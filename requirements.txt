@@ -1,4 +1,4 @@
-# ═══ Zorunlu (Streamlit Cloud'da yüklenmesi gereken) ═══
+# ═══ Temel ═══
 streamlit>=1.30.0
 numpy>=1.24.0
 pandas>=2.0.0
@@ -10,10 +10,13 @@ requests>=2.31.0
 plotly>=5.18.0
 reportlab>=4.0.0
 
-# ═══ Opsiyonel — yoksa demo/fallback modda çalışır ═══
+# ═══ AI ═══
+anthropic>=0.30.0
+openai>=1.30.0
+
+# ═══ Harita ═══
 folium>=0.15.0
 streamlit-folium>=0.18.0
 
-# NOT: anthropic ve openai requirements'tan çıkarıldı.
-# Streamlit Cloud'da 1GB RAM sınırı var, bu paketler ~150MB.
-# Tüm modüller API olmadan demo modda çalışır.
+# ═══ CAD ═══
+networkx>=3.2.0

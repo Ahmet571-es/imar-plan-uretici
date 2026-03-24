@@ -45,15 +45,47 @@ def sayfa_plan():
                 d = bina.katlar[0].daireler[0]
                 apt_program["odalar"] = [{"isim": o.isim, "tip": o.tip, "m2": o.m2} for o in d.odalar]
 
-            plans = _generate_demo_plans(coords, apt_program, plan_sayisi)
-            scored_plans = []
-            for p in plans:
-                fp = p["floor_plan"]
-                sc = score_plan(fp, sun_best_direction=sun_dir)
-                scored_plans.append({"plan": fp, "score": sc, "reasoning": p.get("reasoning", "")})
+            # API keyleri al
+            claude_key = st.session_state.get("claude_api_key", "")
+            grok_key = st.session_state.get("grok_api_key", "")
+
+            if claude_key or grok_key:
+                # Gerçek Dual AI modu
+                from ai.dual_ai_engine import generate_dual_ai_plans
+                from dataset.dataset_rules import ROOM_SIZE_STATS
+                result = generate_dual_ai_plans(
+                    buildable_polygon_coords=coords,
+                    apartment_program=apt_program,
+                    dataset_rules=ROOM_SIZE_STATS,
+                    sun_best_direction=sun_dir,
+                    claude_api_key=claude_key,
+                    grok_api_key=grok_key,
+                    max_iterations=iteration,
+                )
+                scored_plans = []
+                for p in result.best_plans:
+                    scored_plans.append({"plan": p.plan, "score": p.score, "reasoning": p.reasoning})
+                if not scored_plans:
+                    st.warning("AI plan üretemedi, demo moda geçiliyor...")
+                    plans = _generate_demo_plans(coords, apt_program, plan_sayisi)
+                    for p in plans:
+                        fp = p["floor_plan"]
+                        sc = score_plan(fp, sun_best_direction=sun_dir)
+                        scored_plans.append({"plan": fp, "score": sc, "reasoning": p.get("reasoning", "")})
+            else:
+                # Demo mod — API key yoksa
+                plans = _generate_demo_plans(coords, apt_program, plan_sayisi)
+                scored_plans = []
+                for p in plans:
+                    fp = p["floor_plan"]
+                    sc = score_plan(fp, sun_best_direction=sun_dir)
+                    scored_plans.append({"plan": fp, "score": sc, "reasoning": p.get("reasoning", "")})
 
             scored_plans.sort(key=lambda x: x["score"].total, reverse=True)
             st.session_state.generated_plans = scored_plans
+
+            if not claude_key and not grok_key:
+                st.info("ℹ️ API key girilmedi — algoritmik demo planlar üretildi. Sidebar'dan API key girerek gerçek AI planları alabilirsiniz.")
 
     if "generated_plans" in st.session_state:
         plans = st.session_state.generated_plans
@@ -201,22 +233,21 @@ def sayfa_render():
     if room:
         st.info(f"📐 {room.name}: {room.width:.1f}×{room.height:.1f}m = {room.area:.1f} m² | Yön: {room.facing_direction or 'belirsiz'}")
 
-    api_key = st.text_input("Grok/xAI API Key (opsiyonel)", type="password", key="render_api")
+    grok_key = st.session_state.get("grok_api_key", "")
 
     if st.button("🎨 Render Oluştur", type="primary"):
-        if not api_key:
-            st.warning("⚠️ Grok API key girilmedi. Render üretimi için `XAI_API_KEY` gereklidir.")
+        if not grok_key:
+            st.warning("⚠️ Sidebar'dan Grok/xAI API key girin. Şimdilik prompt gösteriliyor:")
             from ai.render_generator import _build_render_prompt
             prompt = _build_render_prompt(secili_oda, room.room_type if room else "salon",
                                          room.area if room else 20, "south", stil)
-            st.markdown("**Oluşturulan prompt (API key ile render üretilecek):**")
             st.code(prompt, language="text")
         else:
             from ai.render_generator import generate_render
             with st.spinner("Render üretiliyor..."):
                 result = generate_render(
                     secili_oda, room.room_type, room.area,
-                    room.facing_direction or "south", stil, api_key,
+                    room.facing_direction or "south", stil, grok_key,
                 )
             if result.success and result.image_url:
                 st.image(result.image_url, caption=f"{secili_oda} — {RENDER_STYLES[stil]['isim']}")

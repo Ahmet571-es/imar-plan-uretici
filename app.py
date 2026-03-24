@@ -123,7 +123,52 @@ with st.sidebar:
             st.rerun()
 
     st.markdown("---")
-    st.caption("v0.1 — FAZ 1 Aktif")
+
+    # ── API Key Ayarları ──
+    with st.expander("🔑 API Ayarları", expanded=False):
+        # Önce secrets.toml'dan, yoksa session_state'ten oku
+        default_claude = ""
+        default_grok = ""
+        try:
+            default_claude = st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            pass
+        try:
+            default_grok = st.secrets.get("XAI_API_KEY", "")
+        except Exception:
+            pass
+
+        claude_key = st.text_input(
+            "Claude API Key",
+            value=st.session_state.get("claude_api_key", default_claude),
+            type="password", key="input_claude_key",
+            help="Anthropic Claude API anahtarı — plan üretimi ve analiz için",
+        )
+        grok_key = st.text_input(
+            "Grok/xAI API Key",
+            value=st.session_state.get("grok_api_key", default_grok),
+            type="password", key="input_grok_key",
+            help="xAI Grok API anahtarı — bağımsız plan üretimi ve render için",
+        )
+
+        if claude_key:
+            st.session_state.claude_api_key = claude_key
+            import os; os.environ["ANTHROPIC_API_KEY"] = claude_key
+        if grok_key:
+            st.session_state.grok_api_key = grok_key
+            import os; os.environ["XAI_API_KEY"] = grok_key
+
+        # Durum göstergesi
+        if claude_key:
+            st.success("✅ Claude API aktif")
+        else:
+            st.caption("Claude API key girilmedi")
+        if grok_key:
+            st.success("✅ Grok API aktif")
+        else:
+            st.caption("Grok API key girilmedi")
+
+    st.caption("v1.0 — FAZ 1-7 + Ajan Sistemi")
 
 
 # ═══════════════════════════════════════════════════════════════
