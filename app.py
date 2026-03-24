@@ -264,20 +264,7 @@ def sayfa_parsel():
             st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════
-# SAYFA 2 — KONUM & ÇEVRE (Placeholder)
-# ═══════════════════════════════════════════════════════════════
-def sayfa_konum():
-    st.header("🗺️ Konum & Çevre Analizi")
-    st.info("Bu sayfa FAZ 6'da geliştirilecektir (Harita, Güneş Analizi, OSM verileri).")
-    st.markdown("""
-    **Planlanan özellikler:**
-    - Folium harita ile parsel konumu
-    - Uydu görüntüsü overlay
-    - Güneş yolu analizi (pvlib/pysolar)
-    - Çevre bina analizi (OpenStreetMap)
-    - Gölge analizi
-    """)
+# Sayfa 2 imported from pages.pages_other
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -654,94 +641,39 @@ def sayfa_daire():
 
 
 # ═══════════════════════════════════════════════════════════════
-# PLACEHOLDER SAYFALAR (FAZ 2-13)
+# SAYFA İMPORTLARI (FAZ 2-7 Modülleri)
 # ═══════════════════════════════════════════════════════════════
-def placeholder_sayfa(baslik: str, faz: str, aciklama: str = ""):
-    st.header(baslik)
-    st.info(f"Bu sayfa **{faz}**'da geliştirilecektir.")
-    if aciklama:
-        st.markdown(aciklama)
+from pages.pages_design import sayfa_plan, sayfa_ai_tefris, sayfa_3d, sayfa_render
+from pages.pages_analysis import sayfa_fizibilite, sayfa_deprem, sayfa_enerji, sayfa_gantt, sayfa_karsilastir
+from pages.pages_other import sayfa_konum, sayfa_irtifak, sayfa_ruhsat, sayfa_muteahhit, sayfa_rapor, sayfa_firsat, sayfa_piyasa
 
-
-def sayfa_plan():
-    placeholder_sayfa("📋 Kat Planı Üretimi", "FAZ 3",
-        "Triple AI (Claude + Grok 4.20) plan üretim motoru + 80K plan veri seti kuralları.")
 
 def sayfa_ai():
-    placeholder_sayfa("🤖 AI İyileştirme & Tefriş", "FAZ 4",
-        "İteratif iyileştirme döngüsü + otomatik mobilya yerleştirme.")
-
-def sayfa_3d():
-    placeholder_sayfa("🏗️ 3D Görselleştirme", "FAZ 5",
-        "Plotly 3D + Trimesh ile detaylı bina modeli.")
-
-def sayfa_render():
-    placeholder_sayfa("🎨 Fotogerçekçi Render", "FAZ 6",
-        "Grok Imagine API ile iç mekan render.")
-
-def sayfa_fizibilite():
-    placeholder_sayfa("💰 Mali Fizibilite", "FAZ 7",
-        "Maliyet tahmini, satış geliri, kâr/zarar, duyarlılık analizi.")
-
-def sayfa_deprem():
-    placeholder_sayfa("🔬 Deprem Risk Analizi", "FAZ 7",
-        "AFAD tehlike haritası, TBDY 2018 parametreleri, taşıyıcı sistem önerisi.")
-
-def sayfa_enerji():
-    placeholder_sayfa("⚡ Enerji Performans Tahmini", "FAZ 7",
-        "BEP-TR basitleştirilmiş hesaplama, A-G enerji sınıfı.")
-
-def sayfa_gantt():
-    placeholder_sayfa("📅 İnşaat Süresi (Gantt)", "FAZ 7",
-        "Plotly timeline ile kazıdan iskana iş takvimi.")
-
-def sayfa_karsilastir():
-    placeholder_sayfa("🔄 Parsel Karşılaştırma", "FAZ 7",
-        "2-3 parselin fizibilite karşılaştırması, radar chart.")
-
-def sayfa_irtifak():
-    placeholder_sayfa("📜 Kat İrtifakı / Mülkiyet", "FAZ 7",
-        "Arsa payı hesabı, bağımsız bölüm listesi, DOCX/PDF taslak.")
-
-def sayfa_ruhsat():
-    placeholder_sayfa("🏛️ Yapı Ruhsatı Paketi", "FAZ 7",
-        "Başvuru evrak listesi, alan hesap tablosu, kontrol listesi.")
-
-def sayfa_muteahhit():
-    placeholder_sayfa("👷 Müteahhit / Taşeron Eşleştirme", "FAZ 7",
-        "YAMB + Google Maps ile bölge müteahhitleri.")
-
-def sayfa_rapor():
-    placeholder_sayfa("📄 Rapor & Dışa Aktarma", "FAZ 7",
-        "15-20 sayfalık fizibilite raporu (PDF), SVG/DXF/PNG dışa aktarma.")
-
-def sayfa_whatsapp():
-    placeholder_sayfa("📱 WhatsApp Bot", "FAZ 8",
-        "Twilio/Green API ile sahadan hızlı fizibilite sorgusu.")
-
-def sayfa_veri():
-    placeholder_sayfa("🔄 Veri Güncelleme", "FAZ 9",
-        "Sahibinden, TCMB, TÜİK scraper'ları + otomatik güncelleme takvimi.")
-
-def sayfa_crm():
-    placeholder_sayfa("👥 CRM", "FAZ 10",
-        "Müşteri ve proje takibi, kanban görünüm.")
-
-def sayfa_workflow():
-    placeholder_sayfa("⚙️ İş Akışı Motoru", "FAZ 10",
-        "Görsel workflow builder, hazır şablonlar, APScheduler görevleri.")
+    sayfa_ai_tefris()
 
 def sayfa_ajan_panel():
     from agents.agent_dashboard import render_agent_dashboard
     render_agent_dashboard()
 
-def sayfa_firsat():
-    placeholder_sayfa("🔍 Fırsat Merkezi", "FAZ 11",
-        "Arsa Avcısı + İmar Değişikliği ajanlarının bulduğu fırsatlar.")
 
-def sayfa_piyasa():
-    placeholder_sayfa("📈 Piyasa İstihbarat", "FAZ 11-13",
-        "Fiyat Takip + Rakip Takip ajanları, haftalık piyasa raporları.")
+# ── Placeholder'lar (Dış API gerektiren sayfalar) ──
+def placeholder_sayfa(baslik, faz, aciklama=""):
+    st.header(baslik)
+    st.info(f"Bu sayfa **{faz}**'da geliştirilecektir. Dış servis entegrasyonu gerektirir.")
+    if aciklama:
+        st.markdown(aciklama)
+
+def sayfa_whatsapp():
+    placeholder_sayfa("📱 WhatsApp Bot", "FAZ 8", "Twilio/Green API ile sahadan hızlı fizibilite sorgusu.")
+
+def sayfa_veri():
+    placeholder_sayfa("🔄 Veri Güncelleme", "FAZ 9", "Sahibinden, TCMB, TÜİK scraper'ları + otomatik güncelleme.")
+
+def sayfa_crm():
+    placeholder_sayfa("👥 CRM", "FAZ 10", "Müşteri ve proje takibi, kanban görünüm.")
+
+def sayfa_workflow():
+    placeholder_sayfa("⚙️ İş Akışı Motoru", "FAZ 10", "Görsel workflow builder, hazır şablonlar.")
 
 
 # ═══════════════════════════════════════════════════════════════
