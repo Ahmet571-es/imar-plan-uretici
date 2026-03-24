@@ -7,14 +7,39 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Veritabanı yolu
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database")
+# Veritabanı yolu — Streamlit Cloud'da proje klasörü read-only,
+# bu yüzden /tmp kullanıyoruz (yazılabilir, ephemeral ama sorunsuz)
+import platform
+
+_is_cloud = platform.processor() == "" or os.environ.get("STREAMLIT_SHARING_MODE")
+
+if _is_cloud or not os.access(os.path.dirname(os.path.abspath(__file__)), os.W_OK):
+    DB_DIR = "/tmp/imar_plan_db"
+else:
+    DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database")
+
 os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "imar_plan.db")
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 # SQLAlchemy engine ve session
-engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False, "timeout": 15},
+    pool_pre_ping=True,
+)
+
+# WAL mode for better concurrent access
+from sqlalchemy import event
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.close()
+
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 

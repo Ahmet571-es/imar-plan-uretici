@@ -47,6 +47,45 @@ if "hesaplama" not in st.session_state:
 if "bina_programi" not in st.session_state:
     st.session_state.bina_programi = None
 
+
+def _save_project_json() -> str:
+    """Mevcut proje verilerini JSON olarak dışa aktar."""
+    import json
+    data = {}
+    if st.session_state.get("parsel"):
+        p = st.session_state.parsel
+        data["parsel"] = {"koordinatlar": p.koordinatlar, "yon": p.yon}
+    if st.session_state.get("imar"):
+        im = st.session_state.imar
+        data["imar"] = {
+            "kat_adedi": im.kat_adedi, "insaat_nizami": im.insaat_nizami,
+            "taks": im.taks, "kaks": im.kaks,
+            "on_bahce": im.on_bahce, "yan_bahce": im.yan_bahce, "arka_bahce": im.arka_bahce,
+            "siginak_gerekli": im.siginak_gerekli, "otopark_gerekli": im.otopark_gerekli,
+        }
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def _load_project_json(json_str: str):
+    """JSON'dan proje verilerini yükle."""
+    import json
+    from core.parcel import Parsel
+    from core.zoning import ImarParametreleri, hesapla
+
+    data = json.loads(json_str)
+
+    if "parsel" in data:
+        coords = [tuple(c) for c in data["parsel"]["koordinatlar"]]
+        st.session_state.parsel = Parsel.from_koordinatlar(coords, yon=data["parsel"].get("yon", "kuzey"))
+
+    if "imar" in data:
+        im = data["imar"]
+        st.session_state.imar = ImarParametreleri(**im)
+
+    # Hesaplamayı yeniden yap
+    if st.session_state.get("parsel") and st.session_state.get("imar"):
+        st.session_state.hesaplama = hesapla(st.session_state.parsel.polygon, st.session_state.imar)
+
 # ── Sidebar Navigasyon ──
 with st.sidebar:
     st.markdown("## 🏗️ İmar Plan Üretici")
@@ -169,6 +208,25 @@ with st.sidebar:
             st.caption("Grok API key girilmedi")
 
     st.caption("v1.0 — FAZ 1-7 + Ajan Sistemi")
+
+    # ── Proje Kaydet / Yükle ──
+    with st.expander("💾 Proje Kaydet / Yükle", expanded=False):
+        st.caption("Sayfa yenilendiğinde verilerinizi kaybetmemek için projeyi kaydedin.")
+
+        if st.session_state.get("parsel") or st.session_state.get("imar"):
+            json_data = _save_project_json()
+            st.download_button("💾 Projeyi İndir (JSON)", json_data,
+                               "proje_kayit.json", "application/json",
+                               use_container_width=True)
+
+        uploaded = st.file_uploader("📂 Proje Yükle", type="json", key="proje_upload")
+        if uploaded:
+            try:
+                _load_project_json(uploaded.read().decode("utf-8"))
+                st.success("✅ Proje yüklendi!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Yükleme hatası: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════
