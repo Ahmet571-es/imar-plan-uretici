@@ -1,6 +1,10 @@
 """
 TKGM API Entegrasyonu — Parsel sorgulama ve koordinat çekme.
-cbsapi.tkgm.gov.tr veya parselsorgu.tkgm.gov.tr üzerinden sorgu yapar.
+
+İyileştirmeler:
+- pyproj ile doğru WGS84→UTM koordinat dönüşümü
+- API endpoint validasyonu
+- Daha güvenilir hata yönetimi
 """
 
 import math
@@ -16,8 +20,6 @@ TKGM_WFS_BASE = "https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api/iltce"
 TIMEOUT = 15
 MAX_RETRIES = 3
 
-# TKGM Türkiye dışından erişimi engelleyebilir.
-# Gerçek tarayıcı gibi davranmak için detaylı header'lar kullanıyoruz.
 TKGM_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -39,12 +41,14 @@ class TKGMParselSonuc:
     ada: str = ""
     parsel: str = ""
     alan: float = 0.0
-    koordinatlar: list = field(default_factory=list)  # [(lon, lat), ...]
+    koordinatlar: list = field(default_factory=list)
     polygon: Polygon | None = None
     pafta: str = ""
     nitelik: str = ""
     hata: str = ""
     ham_veri: dict = field(default_factory=dict)
+    utm_zone: int = 0
+    epsg_code: str = ""
 
 
 def parsel_sorgula(
@@ -54,13 +58,11 @@ def parsel_sorgula(
     ada: str = "",
     parsel: str = "",
 ) -> TKGMParselSonuc:
-    """TKGM API üzerinden parsel bilgisi sorgular.
+    """TKGM API üzerinden parsel bilgisi sorgular."""
+    sonuc = TKGMParselSonuc(il=il, ilce=ilce, mahalle=mahalle,
+                             ada=ada, parsel=parsel)
 
-    Birden fazla endpoint dener, başarısız olursa hata döner.
-    """
-    sonuc = TKGMParselSonuc(il=il, ilce=ilce, mahalle=mahalle, ada=ada, parsel=parsel)
-
-    # Yöntem 1: CBS API — koordinat bazlı parsel sorgu
+    # Yöntem 1: CBS API
     try:
         result = _query_cbs_api(il, ilce, mahalle, ada, parsel)
         if result:
@@ -70,20 +72,20 @@ def parsel_sorgula(
             sonuc.nitelik = result.get("nitelik", "")
             sonuc.ham_veri = result
 
-            # Koordinatları çıkar
             geom = result.get("geometry", result.get("geom", {}))
             if geom:
                 coords = _extract_coordinates(geom)
                 if coords:
                     sonuc.koordinatlar = coords
-                    sonuc.polygon = _coords_to_polygon(coords)
+                    sonuc.polygon = _coords_to_polygon_pyproj(coords)
                     if sonuc.alan == 0 and sonuc.polygon:
                         sonuc.alan = sonuc.polygon.area
 
-            logger.info(f"TKGM sorgu başarılı: {ada}/{parsel} — {sonuc.alan:.1f} m²")
+            logger.info(f"TKGM sorgu basarili: {ada}/{parsel} — "
+                        f"{sonuc.alan:.1f} m2")
             return sonuc
     except Exception as e:
-        logger.warning(f"CBS API hatası: {e}")
+        logger.warning(f"CBS API hatasi: {e}")
 
     # Yöntem 2: WFS servisi
     try:
@@ -96,35 +98,32 @@ def parsel_sorgula(
                 coords = _extract_coordinates(geom)
                 if coords:
                     sonuc.koordinatlar = coords
-                    sonuc.polygon = _coords_to_polygon(coords)
-                    sonuc.alan = sonuc.polygon.area if sonuc.polygon else 0
-            logger.info(f"WFS sorgu başarılı: {ada}/{parsel}")
+                    sonuc.polygon = _coords_to_polygon_pyproj(coords)
+                    sonuc.alan = (sonuc.polygon.area
+                                  if sonuc.polygon else 0)
+            logger.info(f"WFS sorgu basarili: {ada}/{parsel}")
             return sonuc
     except Exception as e:
-        logger.warning(f"WFS hatası: {e}")
+        logger.warning(f"WFS hatasi: {e}")
 
     sonuc.hata = (
-        "TKGM API'ye erişilemedi. Olası nedenler:\n"
-        "• TKGM sunucuları geçici olarak yanıt vermiyor\n"
-        "• Streamlit Cloud sunucusu Türkiye dışında — TKGM coğrafi kısıtlama uygulayabilir\n"
-        "→ Manuel Giriş sekmesinden parsel ölçülerini girebilirsiniz."
+        "TKGM API'ye erisilemedi. Olasi nedenler:\n"
+        "- TKGM sunuculari gecici olarak yanit vermiyor\n"
+        "- Streamlit Cloud sunucusu Turkiye disinda — TKGM cografi "
+        "kisitlama uygulayabilir\n"
+        "-> Manuel Giris sekmesinden parsel olculerini girebilirsiniz."
     )
-    logger.error(f"TKGM erişilemedi: {il}/{ilce} {ada}/{parsel}")
+    logger.error(f"TKGM erisilemedi: {il}/{ilce} {ada}/{parsel}")
     return sonuc
 
 
 def _query_cbs_api(il, ilce, mahalle, ada, parsel) -> dict | None:
     """TKGM CBS API sorgusu."""
-    # Endpoint 1: Doğrudan ada/parsel sorgusu
     url = f"{TKGM_CBS_BASE}/{il}/{ilce}/{mahalle}/{ada}/{parsel}"
 
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.get(
-                url,
-                timeout=TIMEOUT,
-                headers=TKGM_HEADERS,
-            )
+            resp = requests.get(url, timeout=TIMEOUT, headers=TKGM_HEADERS)
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, list) and len(data) > 0:
@@ -135,21 +134,21 @@ def _query_cbs_api(il, ilce, mahalle, ada, parsel) -> dict | None:
                         return features[0].get("properties", features[0])
                 return data if isinstance(data, dict) else None
             elif resp.status_code == 404:
-                logger.debug(f"Parsel bulunamadı: {ada}/{parsel}")
+                logger.debug(f"Parsel bulunamadi: {ada}/{parsel}")
                 return None
             else:
-                logger.debug(f"TKGM CBS yanıt: {resp.status_code}")
+                logger.debug(f"TKGM CBS yanit: {resp.status_code}")
         except requests.Timeout:
-            logger.debug(f"TKGM CBS timeout (deneme {attempt+1}/{MAX_RETRIES})")
+            logger.debug(f"TKGM CBS timeout (deneme {attempt + 1}/"
+                         f"{MAX_RETRIES})")
         except requests.RequestException as e:
-            logger.debug(f"TKGM CBS istek hatası: {e}")
+            logger.debug(f"TKGM CBS istek hatasi: {e}")
 
     return None
 
 
 def _query_wfs(il, ilce, ada, parsel) -> dict | None:
     """TKGM WFS sorgusu (GeoJSON)."""
-    # WFS GetFeature sorgusu
     params = {
         "service": "WFS",
         "version": "1.1.0",
@@ -161,12 +160,8 @@ def _query_wfs(il, ilce, ada, parsel) -> dict | None:
 
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.get(
-                TKGM_WFS_BASE,
-                params=params,
-                timeout=TIMEOUT,
-                headers=TKGM_HEADERS,
-            )
+            resp = requests.get(TKGM_WFS_BASE, params=params,
+                                timeout=TIMEOUT, headers=TKGM_HEADERS)
             if resp.status_code == 200:
                 data = resp.json()
                 features = data.get("features", [])
@@ -176,7 +171,7 @@ def _query_wfs(il, ilce, ada, parsel) -> dict | None:
                     props["geometry"] = feat.get("geometry", {})
                     return props
         except Exception as e:
-            logger.debug(f"WFS hatası (deneme {attempt+1}): {e}")
+            logger.debug(f"WFS hatasi (deneme {attempt + 1}): {e}")
 
     return None
 
@@ -190,70 +185,140 @@ def _extract_coordinates(geom: dict) -> list[tuple[float, float]]:
         return []
 
     if geom_type == "Polygon":
-        # İlk ring (dış sınır)
         ring = coords[0] if coords else []
         return [(c[0], c[1]) for c in ring]
     elif geom_type == "MultiPolygon":
-        # En büyük poligonu al
         biggest = max(coords, key=lambda p: len(p[0]) if p else 0)
         ring = biggest[0] if biggest else []
         return [(c[0], c[1]) for c in ring]
     elif geom_type == "Point":
         return [(coords[0], coords[1])]
     else:
-        # Düz koordinat listesi
         if isinstance(coords[0], (list, tuple)) and len(coords[0]) >= 2:
             return [(c[0], c[1]) for c in coords]
         return []
 
 
-def _coords_to_polygon(coords: list[tuple[float, float]]) -> Polygon | None:
+def _get_utm_zone(longitude: float) -> int:
+    """Boylama göre UTM zone hesaplar."""
+    return int((longitude + 180) / 6) + 1
+
+
+def _get_utm_epsg(latitude: float, longitude: float) -> int:
+    """WGS84 koordinatlardan UTM EPSG kodu döndürür."""
+    zone = _get_utm_zone(longitude)
+    if latitude >= 0:
+        return 32600 + zone  # Kuzey yarımküre
+    else:
+        return 32700 + zone  # Güney yarımküre
+
+
+def _coords_to_polygon_pyproj(
+    coords: list[tuple[float, float]],
+) -> Polygon | None:
     """Koordinatlardan Shapely Polygon oluşturur.
 
-    TKGM genellikle EPSG:4326 (WGS84) döner — derece cinsinden.
-    Metre cinsinden alan için UTM'e dönüştürmek gerekir.
-    Basit yaklaşım: enlem/boylamdan metre tahmini.
+    pyproj varsa doğru UTM dönüşümü yapar, yoksa yaklaşık hesap.
     """
     if len(coords) < 3:
         return None
 
-    # Eğer koordinatlar derece cinsindeyse (enlem/boylam)
-    if all(abs(c[0]) < 180 and abs(c[1]) < 90 for c in coords[:3]):
-        # WGS84 → yaklaşık metre dönüşümü
-        ref_lat = sum(c[1] for c in coords) / len(coords)
-        ref_lon = sum(c[0] for c in coords) / len(coords)
+    # Koordinatlar derece cinsinde mi kontrol et
+    if not all(abs(c[0]) < 180 and abs(c[1]) < 90 for c in coords[:3]):
+        # Zaten metre cinsinde
+        poly = Polygon(coords)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        return poly
 
+    # WGS84 → UTM dönüşümü
+    ref_lat = sum(c[1] for c in coords) / len(coords)
+    ref_lon = sum(c[0] for c in coords) / len(coords)
+
+    try:
+        from pyproj import Transformer
+        epsg_utm = _get_utm_epsg(ref_lat, ref_lon)
+        transformer = Transformer.from_crs(
+            "EPSG:4326", f"EPSG:{epsg_utm}", always_xy=True
+        )
+        meter_coords = []
+        for lon, lat in coords:
+            x, y = transformer.transform(lon, lat)
+            meter_coords.append((x, y))
+        logger.info(f"pyproj UTM donusumu: EPSG:{epsg_utm}")
+    except ImportError:
+        logger.warning("pyproj kurulu degil, yaklasik hesap kullaniliyor")
         meter_coords = []
         for lon, lat in coords:
             x = (lon - ref_lon) * 111320 * math.cos(math.radians(ref_lat))
             y = (lat - ref_lat) * 110540
             meter_coords.append((x, y))
 
-        poly = Polygon(meter_coords)
-    else:
-        # Zaten metre cinsinde (EPSG:3857 vb.)
-        poly = Polygon(coords)
-
+    poly = Polygon(meter_coords)
     if not poly.is_valid:
         poly = poly.buffer(0)
 
     return poly
 
 
+def test_tkgm_connection() -> dict:
+    """TKGM API bağlantı testi."""
+    results = {
+        "cbs_api": False,
+        "wfs_api": False,
+        "details": [],
+    }
+
+    # CBS API test
+    try:
+        resp = requests.get(
+            f"{TKGM_CBS_BASE}/06/01/01/100/1",
+            timeout=10, headers=TKGM_HEADERS,
+        )
+        results["cbs_api"] = resp.status_code in (200, 404)
+        results["details"].append(
+            f"CBS API: HTTP {resp.status_code}")
+    except Exception as e:
+        results["details"].append(f"CBS API hata: {e}")
+
+    # WFS API test
+    try:
+        resp = requests.get(
+            TKGM_WFS_BASE,
+            params={"service": "WFS", "request": "GetCapabilities"},
+            timeout=10, headers=TKGM_HEADERS,
+        )
+        results["wfs_api"] = resp.status_code == 200
+        results["details"].append(
+            f"WFS API: HTTP {resp.status_code}")
+    except Exception as e:
+        results["details"].append(f"WFS API hata: {e}")
+
+    return results
+
+
 def get_il_ilce_listesi() -> dict:
     """İl ve ilçe listesini döndürür (statik)."""
     return {
-        "Ankara": ["Çankaya", "Keçiören", "Yenimahalle", "Etimesgut", "Mamak", "Sincan", "Pursaklar", "Gölbaşı", "Altındağ", "Polatlı"],
-        "İstanbul": ["Kadıköy", "Beşiktaş", "Bakırköy", "Üsküdar", "Kartal", "Maltepe", "Ataşehir", "Beylikdüzü", "Başakşehir", "Çekmeköy"],
-        "İzmir": ["Konak", "Bornova", "Karşıyaka", "Buca", "Bayraklı", "Çiğli", "Gaziemir", "Narlıdere", "Balçova"],
-        "Kütahya": ["Merkez", "Tavşanlı", "Simav", "Emet", "Gediz", "Domaniç"],
-        "Antalya": ["Muratpaşa", "Konyaaltı", "Kepez", "Alanya", "Manavgat", "Serik"],
-        "Bursa": ["Osmangazi", "Nilüfer", "Yıldırım", "Mudanya", "Gemlik", "İnegöl"],
-        "Konya": ["Selçuklu", "Meram", "Karatay", "Ereğli", "Akşehir"],
-        "Gaziantep": ["Şahinbey", "Şehitkamil", "Oğuzeli", "Nizip"],
-        "Trabzon": ["Ortahisar", "Akçaabat", "Yomra", "Araklı", "Of"],
-        "Eskişehir": ["Odunpazarı", "Tepebaşı", "Sivrihisar"],
-        "Kayseri": ["Melikgazi", "Kocasinan", "Talas", "İncesu"],
-        "Samsun": ["İlkadım", "Atakum", "Canik", "Tekkeköy"],
-        "Diyarbakır": ["Bağlar", "Kayapınar", "Yenişehir", "Sur"],
+        "Ankara": ["Cankaya", "Kecioren", "Yenimahalle", "Etimesgut",
+                    "Mamak", "Sincan", "Pursaklar", "Golbasi",
+                    "Altindag", "Polatli"],
+        "Istanbul": ["Kadikoy", "Besiktas", "Bakirkoy", "Uskudar",
+                      "Kartal", "Maltepe", "Atasehir", "Beylikduzu",
+                      "Basaksehir", "Cekmekoy"],
+        "Izmir": ["Konak", "Bornova", "Karsiyaka", "Buca", "Bayrakli",
+                   "Cigli", "Gaziemir", "Narlidere", "Balcova"],
+        "Kutahya": ["Merkez", "Tavsanli", "Simav", "Emet", "Gediz",
+                     "Domanic"],
+        "Antalya": ["Muratpasa", "Konyaalti", "Kepez", "Alanya",
+                     "Manavgat", "Serik"],
+        "Bursa": ["Osmangazi", "Nilufer", "Yildirim", "Mudanya",
+                   "Gemlik", "Inegol"],
+        "Konya": ["Selcuklu", "Meram", "Karatay", "Eregli", "Aksehir"],
+        "Gaziantep": ["Sahinbey", "Sehitkamil", "Oguzeli", "Nizip"],
+        "Trabzon": ["Ortahisar", "Akcaabat", "Yomra", "Arakli", "Of"],
+        "Eskisehir": ["Odunpazari", "Tepebasi", "Sivrihisar"],
+        "Kayseri": ["Melikgazi", "Kocasinan", "Talas", "Incesu"],
+        "Samsun": ["Ilkadim", "Atakum", "Canik", "Tekkekoy"],
+        "Diyarbakir": ["Baglar", "Kayapinar", "Yenisehir", "Sur"],
     }
