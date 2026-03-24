@@ -79,15 +79,26 @@ def analyze_sun(
 
 
 def _estimate_annual_sun_hours(latitude: float) -> float:
-    """Enlem bazlı yıllık güneş saati tahmini."""
-    # Türkiye: 36° (Hatay) → ~2800 saat, 42° (Trabzon) → ~1800 saat
-    if latitude <= 36:
-        return 2800
-    elif latitude >= 42:
-        return 1800
-    else:
-        # Doğrusal interpolasyon
-        return 2800 - (latitude - 36) * (1000 / 6)
+    """Enlem bazlı yıllık güneş saati hesabı — astronomi formülleri ile."""
+    import math
+    # Yıl boyunca her gün için gündüz saatini hesapla
+    toplam_saat = 0
+    for gun in range(1, 366):
+        # Güneş deklinasyonu (Cooper denklemi)
+        deklinasyon = 23.45 * math.sin(math.radians(360 * (284 + gun) / 365))
+        # Gün doğumu saat açısı
+        lat_rad = math.radians(latitude)
+        dek_rad = math.radians(deklinasyon)
+        cos_omega = -math.tan(lat_rad) * math.tan(dek_rad)
+        cos_omega = max(-1.0, min(1.0, cos_omega))
+        omega = math.degrees(math.acos(cos_omega))
+        # Gündüz süresi (saat)
+        gunduz = 2 * omega / 15
+        # Bulutluluk faktörü (Türkiye ortalaması ~%55 güneşli gün)
+        bulut_faktor = 0.55
+        toplam_saat += gunduz * bulut_faktor
+
+    return round(toplam_saat)
 
 
 def _generate_recommendations(result: SunAnalysisResult) -> list[str]:

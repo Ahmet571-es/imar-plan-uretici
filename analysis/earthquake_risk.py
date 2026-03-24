@@ -145,9 +145,39 @@ def deprem_risk_analizi(
 
 
 def _estimate_ss(lat: float, lon: float) -> float:
-    """Basitleştirilmiş Ss tahmini (gerçek AFAD verileri için API gerekir)."""
-    # Türkiye genelinde kabaca: Batı > Doğu, Kuzey Anadolu fay hattı yüksek
-    # Bu çok kaba bir tahmindir — gerçek projede AFAD API kullanılmalı
+    """AFAD TDTH API'den gerçek Ss değeri çeker, başarısız olursa tahmin yapar."""
+    # Yöntem 1: AFAD TDTH API
+    try:
+        import requests
+        url = "https://tdth.afad.gov.tr/api/spectrum"
+        params = {"latitude": lat, "longitude": lon, "soilType": "ZC"}
+        resp = requests.get(url, params=params, timeout=10,
+                           headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        if resp.status_code == 200:
+            data = resp.json()
+            ss = data.get("Ss", data.get("ss", 0))
+            if ss and float(ss) > 0:
+                logger.info(f"AFAD API'den Ss={ss} alındı ({lat:.2f}, {lon:.2f})")
+                return float(ss)
+    except Exception as e:
+        logger.debug(f"AFAD API hatası: {e}")
+
+    # Yöntem 2: deprem.afad.gov.tr alternatif
+    try:
+        import requests
+        url2 = f"https://deprem.afad.gov.tr/api/spectral-values?lat={lat}&lng={lon}&soilType=ZC"
+        resp2 = requests.get(url2, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if resp2.status_code == 200:
+            data2 = resp2.json()
+            ss = data2.get("Ss", data2.get("ss", 0))
+            if ss and float(ss) > 0:
+                logger.info(f"AFAD alt. API'den Ss={ss} alındı")
+                return float(ss)
+    except Exception as e:
+        logger.debug(f"AFAD alt. API hatası: {e}")
+
+    # Yöntem 3: Hardcoded tahmin (fallback)
+    logger.warning("AFAD API erişilemedi, tahmin kullanılıyor")
     base = 0.40
     if 39.5 < lat < 41.5 and 27 < lon < 42:  # Kuzey Anadolu Fay
         base = 0.75

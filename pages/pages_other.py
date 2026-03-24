@@ -258,6 +258,49 @@ def sayfa_rapor():
         else:
             st.error("❌ PDF oluşturulamadı. reportlab kurulu olduğundan emin olun.")
 
+    # ── Kat Planı Dışa Aktarma ──
+    plan_data = st.session_state.get("selected_plan") or (
+        st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
+    )
+
+    if plan_data and "plan" in plan_data:
+        st.markdown("---")
+        st.subheader("📐 Kat Planı Dışa Aktarma")
+
+        col_exp1, col_exp2, col_exp3, col_exp4 = st.columns(4)
+
+        with col_exp1:
+            if st.button("📐 DXF (AutoCAD)", use_container_width=True):
+                from export.dxf_exporter import export_dxf
+                path = export_dxf(plan_data["plan"], "/tmp/kat_plani.dxf")
+                if path and os.path.exists(path):
+                    with open(path, "rb") as f:
+                        st.download_button("📥 DXF İndir", f, "kat_plani.dxf", "application/dxf")
+
+        with col_exp2:
+            if st.button("🖼️ SVG (Vektörel)", use_container_width=True):
+                from export.svg_exporter import export_svg
+                path = export_svg(plan_data["plan"], "/tmp/kat_plani.svg")
+                if path and os.path.exists(path):
+                    with open(path, "rb") as f:
+                        st.download_button("📥 SVG İndir", f, "kat_plani.svg", "image/svg+xml")
+
+        with col_exp3:
+            if st.button("🖼️ PNG (Görsel)", use_container_width=True):
+                from drawing.plan_renderer_matplotlib import render_floor_plan
+                fig = render_floor_plan(plan_data["plan"])
+                fig.savefig("/tmp/kat_plani.png", dpi=300, bbox_inches="tight")
+                with open("/tmp/kat_plani.png", "rb") as f:
+                    st.download_button("📥 PNG İndir", f, "kat_plani.png", "image/png")
+
+        with col_exp4:
+            if st.button("📄 PDF (Plan)", use_container_width=True):
+                from drawing.plan_renderer_matplotlib import render_floor_plan
+                fig = render_floor_plan(plan_data["plan"])
+                fig.savefig("/tmp/kat_plani_a3.pdf", format="pdf", dpi=150)
+                with open("/tmp/kat_plani_a3.pdf", "rb") as f:
+                    st.download_button("📥 Plan PDF İndir", f, "kat_plani.pdf", "application/pdf")
+
 
 def sayfa_firsat():
     """Sayfa 24 — Fırsat Merkezi (Ajan sonuçlarından)."""

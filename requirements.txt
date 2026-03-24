@@ -9,6 +9,7 @@ Pillow>=10.0.0
 requests>=2.31.0
 plotly>=5.18.0
 reportlab>=4.0.0
+networkx>=3.2.0
 
 # ═══ AI ═══
 anthropic>=0.30.0
@@ -18,5 +19,6 @@ openai>=1.30.0
 folium>=0.15.0
 streamlit-folium>=0.18.0
 
-# ═══ CAD ═══
-networkx>=3.2.0
+# ═══ CAD / Export ═══
+ezdxf>=1.1.0
+svgwrite>=1.4.0

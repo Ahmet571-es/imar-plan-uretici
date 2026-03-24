@@ -287,19 +287,44 @@ def sayfa_parsel():
 
     with tab_tkgm:
         st.subheader("🌐 TKGM Parsel Sorgulama")
-        st.info("TKGM API entegrasyonu FAZ 1B'de eklenecektir. Şimdilik Manuel Giriş kullanın.")
+        from core.tkgm_api import parsel_sorgula, get_il_ilce_listesi
+
+        il_ilce = get_il_ilce_listesi()
+        iller = list(il_ilce.keys())
 
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            st.text_input("İl", key="tkgm_il", placeholder="Ankara")
-            st.text_input("İlçe", key="tkgm_ilce", placeholder="Çankaya")
-            st.text_input("Mahalle", key="tkgm_mahalle", placeholder="")
+            secili_il = st.selectbox("İl", iller, key="tkgm_il")
+            ilceler = il_ilce.get(secili_il, ["Merkez"])
+            secili_ilce = st.selectbox("İlçe", ilceler, key="tkgm_ilce")
+            mahalle_input = st.text_input("Mahalle (opsiyonel)", key="tkgm_mahalle", placeholder="")
         with col_t2:
-            st.text_input("Ada No", key="tkgm_ada", placeholder="1301")
-            st.text_input("Parsel No", key="tkgm_parsel", placeholder="7")
+            ada_input = st.text_input("Ada No", key="tkgm_ada", placeholder="1301")
+            parsel_input = st.text_input("Parsel No", key="tkgm_parsel", placeholder="7")
 
-        st.button("🔍 Parsel Sorgula (TKGM)", disabled=True, key="btn_tkgm")
-        st.caption("⏳ TKGM API bağlantısı sonraki fazda aktif olacak.")
+        if st.button("🔍 Parsel Sorgula (TKGM)", type="primary", key="btn_tkgm"):
+            if not ada_input or not parsel_input:
+                st.error("Ada ve Parsel numarasını girin.")
+            else:
+                with st.spinner("TKGM'den parsel sorgulanıyor..."):
+                    sonuc = parsel_sorgula(
+                        il=secili_il, ilce=secili_ilce,
+                        mahalle=mahalle_input, ada=ada_input, parsel=parsel_input,
+                    )
+
+                if sonuc.basarili and sonuc.polygon:
+                    parsel = Parsel(sonuc.polygon, yon="kuzey")
+                    st.session_state.parsel = parsel
+                    st.success(f"✅ Parsel bulundu! Alan: {sonuc.alan:.1f} m², Köşe: {parsel.kose_sayisi}")
+                    if sonuc.nitelik:
+                        st.info(f"Nitelik: {sonuc.nitelik}")
+                elif sonuc.basarili and not sonuc.polygon:
+                    st.warning("Parsel bulundu ama koordinat verisi alınamadı. Manuel giriş kullanın.")
+                    if sonuc.alan > 0:
+                        st.info(f"TKGM alan bilgisi: {sonuc.alan:.1f} m²")
+                else:
+                    st.error(f"❌ {sonuc.hata}")
+                    st.caption("TKGM API'ye erişilemedi veya parsel bulunamadı. Manuel Giriş sekmesinden devam edebilirsiniz.")
 
     # Sonraki adım butonu
     if st.session_state.parsel is not None:
@@ -667,15 +692,47 @@ def sayfa_daire():
 
     with tab_ai:
         st.subheader("🤖 AI ile Doğal Dil Girişi")
-        st.info("Claude API entegrasyonu FAZ 3'te eklenecektir.")
-        st.text_area(
+
+        claude_key = st.session_state.get("claude_api_key", "")
+
+        ai_input = st.text_area(
             "Daire programınızı doğal dille yazın:",
             placeholder="Örnek: Her katta 2 daire olsun, her biri 3+1, 125 metrekare. Salon 30, yatak odaları 15-20, mutfak 12, bir balkon olsun",
             height=120,
             key="ai_daire_input",
         )
-        st.button("🧠 AI ile Analiz Et", disabled=True, key="btn_ai_daire")
-        st.caption("⏳ Claude API bağlantısı FAZ 3'te aktif olacak.")
+
+        if st.button("🧠 AI ile Analiz Et", key="btn_ai_daire", disabled=not claude_key):
+            if ai_input.strip():
+                with st.spinner("Claude analiz ediyor..."):
+                    try:
+                        import anthropic
+                        client = anthropic.Anthropic(api_key=claude_key)
+                        response = client.messages.create(
+                            model="claude-sonnet-4-6-20250514",
+                            max_tokens=2048,
+                            system="Sen bir mimari asistansın. Kullanıcının doğal dildeki talebini analiz et ve JSON formatında daire programı çıkar. Yanıtın SADECE JSON olsun, başka metin ekleme. Format: {\"kat_basi_daire\": 2, \"daire_tipi\": \"3+1\", \"daireler\": [{\"tip\": \"3+1\", \"brut_alan\": 125, \"odalar\": [{\"isim\": \"Salon\", \"tip\": \"salon\", \"m2\": 30}]}]}",
+                            messages=[{"role": "user", "content": f"Kısıtlamalar: Kat başı net alan {sonuc.kat_basi_net_alan:.0f} m², {imar.kat_adedi} kat. Talep: {ai_input}"}],
+                        )
+                        import json
+                        text = response.content[0].text
+                        if "```json" in text:
+                            text = text.split("```json")[1].split("```")[0]
+                        elif "```" in text:
+                            text = text.split("```")[1].split("```")[0]
+                        parsed = json.loads(text)
+
+                        # Parsed sonucu bina programına dönüştür
+                        st.success("✅ AI analizi tamamlandı!")
+                        st.json(parsed)
+                        st.info("Yukarıdaki sonucu Manuel Giriş sekmesinden düzenleyebilirsiniz.")
+                    except Exception as e:
+                        st.error(f"AI analiz hatası: {e}")
+            else:
+                st.warning("Lütfen bir metin girin.")
+
+        if not claude_key:
+            st.caption("💡 AI analizi için sidebar'dan Claude API key girin.")
 
     # Sonraki adım
     if st.session_state.bina_programi is not None:
