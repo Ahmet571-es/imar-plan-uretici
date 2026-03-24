@@ -274,7 +274,7 @@ with st.sidebar:
         else:
             st.caption("Grok API key girilmedi")
 
-    st.caption("v1.0 — FAZ 1-7 + Ajan Sistemi")
+    st.caption("v1.1 — FAZ 1-7 + Ajan Sistemi + UX")
 
     # ── Otomatik Kaydetme Durumu ──
     has_data = st.session_state.get("parsel") is not None or st.session_state.get("imar") is not None
@@ -944,10 +944,203 @@ def sayfa_veri():
     placeholder_sayfa("🔄 Veri Güncelleme", "FAZ 9", "Sahibinden, TCMB, TÜİK scraper'ları + otomatik güncelleme.")
 
 def sayfa_crm():
-    placeholder_sayfa("👥 CRM", "FAZ 10", "Müşteri ve proje takibi, kanban görünüm.")
+    """CRM Sayfası — Müşteri ve proje takibi."""
+    st.header("CRM — Musteri ve Proje Takibi")
+
+    from database.db import get_engine
+    try:
+        from sqlalchemy import text
+        engine = get_engine()
+    except Exception:
+        engine = None
+
+    # Müşteri ekleme formu
+    with st.expander("Yeni Musteri Ekle", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            mus_ad = st.text_input("Ad Soyad", key="crm_ad")
+            mus_tel = st.text_input("Telefon", key="crm_tel")
+            mus_email = st.text_input("E-posta", key="crm_email")
+        with col2:
+            mus_tip = st.selectbox("Musteri Tipi",
+                                    ["Bireysel", "Kurumsal", "Muteahhit"],
+                                    key="crm_tip")
+            mus_durum = st.selectbox("Durum",
+                                      ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"],
+                                      key="crm_durum")
+            mus_not = st.text_area("Notlar", key="crm_not", height=68)
+
+        if st.button("Musteri Kaydet", type="primary", key="crm_kaydet"):
+            if not mus_ad:
+                st.warning("Ad Soyad zorunludur.")
+            else:
+                if "crm_musteriler" not in st.session_state:
+                    st.session_state.crm_musteriler = []
+                st.session_state.crm_musteriler.append({
+                    "ad": mus_ad, "tel": mus_tel, "email": mus_email,
+                    "tip": mus_tip, "durum": mus_durum, "not": mus_not,
+                })
+                st.success(f"Musteri eklendi: {mus_ad}")
+                st.rerun()
+
+    # Proje ekleme
+    with st.expander("Yeni Proje Ekle", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            prj_ad = st.text_input("Proje Adi", key="crm_prj_ad")
+            prj_il = st.text_input("Il/Ilce", key="crm_prj_il")
+        with col2:
+            prj_durum = st.selectbox("Proje Durumu",
+                                      ["Fizibilite", "Tasarim", "Ruhsat", "Insaat", "Teslim"],
+                                      key="crm_prj_durum")
+            prj_butce = st.number_input("Butce (TL)", 0, 100_000_000, 5_000_000,
+                                         step=100_000, key="crm_prj_butce")
+
+        if st.button("Proje Kaydet", type="primary", key="crm_prj_kaydet"):
+            if not prj_ad:
+                st.warning("Proje adi zorunludur.")
+            else:
+                if "crm_projeler" not in st.session_state:
+                    st.session_state.crm_projeler = []
+                st.session_state.crm_projeler.append({
+                    "ad": prj_ad, "il": prj_il,
+                    "durum": prj_durum, "butce": prj_butce,
+                })
+                st.success(f"Proje eklendi: {prj_ad}")
+                st.rerun()
+
+    # Müşteri listesi
+    st.subheader("Musteri Listesi")
+    musteriler = st.session_state.get("crm_musteriler", [])
+    if musteriler:
+        import pandas as pd
+        df = pd.DataFrame(musteriler)
+        st.dataframe(df, use_container_width=True)
+
+        # Kanban görünüm
+        st.subheader("Kanban Gorunum")
+        durumlar = ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"]
+        cols = st.columns(len(durumlar))
+        for i, durum in enumerate(durumlar):
+            with cols[i]:
+                st.markdown(f"**{durum}**")
+                filtered = [m for m in musteriler if m["durum"] == durum]
+                for m in filtered:
+                    st.markdown(
+                        f"<div style='background:#f0f0f0; padding:8px; "
+                        f"border-radius:4px; margin:4px 0; font-size:12px;'>"
+                        f"<b>{m['ad']}</b><br>{m.get('tel','')}</div>",
+                        unsafe_allow_html=True,
+                    )
+    else:
+        st.info("Henuz musteri eklenmedi. Yukaridaki formdan ekleyebilirsiniz.")
+
+    # Proje listesi
+    st.subheader("Proje Listesi")
+    projeler = st.session_state.get("crm_projeler", [])
+    if projeler:
+        import pandas as pd
+        df_p = pd.DataFrame(projeler)
+        st.dataframe(df_p, use_container_width=True)
+    else:
+        st.info("Henuz proje eklenmedi.")
+
 
 def sayfa_workflow():
-    placeholder_sayfa("⚙️ İş Akışı Motoru", "FAZ 10", "Görsel workflow builder, hazır şablonlar.")
+    """Is Akisi Motoru — Gorev zamanlama ve workflow editor."""
+    st.header("Is Akisi Motoru")
+
+    # Hazır şablonlar
+    st.subheader("Hazir Is Akisi Sablonlari")
+
+    sablonlar = {
+        "Standart Konut Projesi": [
+            {"gorev": "Parsel analizi", "sure_gun": 2, "bagimllik": None},
+            {"gorev": "Imar parametreleri belirleme", "sure_gun": 1, "bagimllik": "Parsel analizi"},
+            {"gorev": "Fizibilite raporu", "sure_gun": 3, "bagimllik": "Imar parametreleri belirleme"},
+            {"gorev": "Kat plani tasarimi", "sure_gun": 5, "bagimllik": "Fizibilite raporu"},
+            {"gorev": "3D modelleme", "sure_gun": 3, "bagimllik": "Kat plani tasarimi"},
+            {"gorev": "Yapi ruhsati basvurusu", "sure_gun": 10, "bagimllik": "Kat plani tasarimi"},
+            {"gorev": "Insaat baslangici", "sure_gun": 0, "bagimllik": "Yapi ruhsati basvurusu"},
+        ],
+        "Hizli Fizibilite": [
+            {"gorev": "Parsel secimi", "sure_gun": 1, "bagimllik": None},
+            {"gorev": "Otomatik hesaplama", "sure_gun": 0, "bagimllik": "Parsel secimi"},
+            {"gorev": "Maliyet analizi", "sure_gun": 1, "bagimllik": "Otomatik hesaplama"},
+            {"gorev": "Rapor olusturma", "sure_gun": 1, "bagimllik": "Maliyet analizi"},
+        ],
+        "Tam Proje Sureci": [
+            {"gorev": "Arazi kesfesi", "sure_gun": 3, "bagimllik": None},
+            {"gorev": "Jeolojik etut", "sure_gun": 15, "bagimllik": "Arazi kesfesi"},
+            {"gorev": "Mimari proje", "sure_gun": 30, "bagimllik": "Jeolojik etut"},
+            {"gorev": "Statik proje", "sure_gun": 20, "bagimllik": "Mimari proje"},
+            {"gorev": "Tesisat projeleri", "sure_gun": 15, "bagimllik": "Mimari proje"},
+            {"gorev": "Ruhsat sureci", "sure_gun": 30, "bagimllik": "Statik proje"},
+            {"gorev": "Insaat (kaba)", "sure_gun": 120, "bagimllik": "Ruhsat sureci"},
+            {"gorev": "Insaat (ince)", "sure_gun": 90, "bagimllik": "Insaat (kaba)"},
+            {"gorev": "Iskan", "sure_gun": 30, "bagimllik": "Insaat (ince)"},
+        ],
+    }
+
+    sablon_sec = st.selectbox("Sablon Sec", list(sablonlar.keys()),
+                               key="wf_sablon")
+
+    if st.button("Sablonu Yukle", type="primary", key="wf_yukle"):
+        st.session_state.wf_gorevler = list(sablonlar[sablon_sec])
+        st.success(f"Sablon yuklendi: {sablon_sec}")
+
+    # Görev listesi
+    gorevler = st.session_state.get("wf_gorevler", [])
+
+    if gorevler:
+        st.subheader("Gorev Listesi")
+        import pandas as pd
+        df = pd.DataFrame(gorevler)
+        st.dataframe(df, use_container_width=True)
+
+        # Basit Gantt görünümü
+        st.subheader("Zaman Cizelgesi")
+        cumulative_day = 0
+        for g in gorevler:
+            days = g["sure_gun"]
+            bar_width = max(days * 3, 10)
+            left_offset = cumulative_day * 3
+            st.markdown(
+                f"<div style='display:flex; align-items:center; margin:2px 0;'>"
+                f"<div style='width:200px; font-size:11px;'>{g['gorev']}</div>"
+                f"<div style='margin-left:{left_offset}px; background:#1E88E5; "
+                f"height:18px; width:{bar_width}px; border-radius:3px; "
+                f"color:white; font-size:10px; padding:1px 4px;'>"
+                f"{days}g</div></div>",
+                unsafe_allow_html=True,
+            )
+            cumulative_day += days
+
+        st.caption(f"Toplam tahmini sure: {sum(g['sure_gun'] for g in gorevler)} gun")
+
+    # Manuel görev ekleme
+    with st.expander("Gorev Ekle", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            yeni_gorev = st.text_input("Gorev Adi", key="wf_yeni_gorev")
+        with col2:
+            yeni_sure = st.number_input("Sure (gun)", 0, 365, 5, key="wf_yeni_sure")
+        with col3:
+            mevcut = [g["gorev"] for g in gorevler] if gorevler else []
+            yeni_bag = st.selectbox("Bagimlilik",
+                                     [None] + mevcut, key="wf_yeni_bag")
+
+        if st.button("Gorev Ekle", key="wf_ekle"):
+            if yeni_gorev:
+                if "wf_gorevler" not in st.session_state:
+                    st.session_state.wf_gorevler = []
+                st.session_state.wf_gorevler.append({
+                    "gorev": yeni_gorev,
+                    "sure_gun": yeni_sure,
+                    "bagimllik": yeni_bag,
+                })
+                st.success(f"Gorev eklendi: {yeni_gorev}")
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -981,9 +1174,22 @@ SAYFA_MAP = {
     "25_piyasa":      sayfa_piyasa,
 }
 
+# ── Progress indicator ──
+try:
+    from utils.navigation import render_progress_bar, render_next_step_button
+    render_progress_bar()
+except Exception:
+    pass
+
 # Aktif sayfayı göster
 sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
 sayfa_fonksiyonu()
+
+# ── Sonraki Adım butonu ──
+try:
+    render_next_step_button(st.session_state.aktif_sayfa)
+except Exception:
+    pass
 
 # ── Her render sonrası otomatik kaydet ──
 _auto_save()
