@@ -732,8 +732,8 @@ def sayfa_workflow():
         "Görsel workflow builder, hazır şablonlar, APScheduler görevleri.")
 
 def sayfa_ajan_panel():
-    placeholder_sayfa("🤖 Ajan Kontrol Paneli", "FAZ 11-13",
-        "10+1 otonom ajan durumu, başlat/durdur, performans metrikleri.")
+    from agents.agent_dashboard import render_agent_dashboard
+    render_agent_dashboard()
 
 def sayfa_firsat():
     placeholder_sayfa("🔍 Fırsat Merkezi", "FAZ 11",
