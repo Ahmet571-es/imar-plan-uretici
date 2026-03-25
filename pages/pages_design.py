@@ -117,6 +117,16 @@ def sayfa_plan():
     # ── Plan gösterimi ──
     if "generated_plans" in st.session_state and st.session_state.generated_plans:
         plans = st.session_state.generated_plans
+
+        # Plan geçmişini session state'e kaydet (AI iyileştirme için)
+        if "plan_gecmisi" not in st.session_state:
+            st.session_state.plan_gecmisi = []
+        # Mevcut planları geçmişe ekle (tekrar eklemeyi önle)
+        mevcut_idler = {id(p["plan"]) for p in st.session_state.plan_gecmisi}
+        for p in plans:
+            if id(p["plan"]) not in mevcut_idler:
+                st.session_state.plan_gecmisi.append(p)
+
         st.markdown("---")
         st.subheader(f"🏗️ {len(plans)} Alternatif Plan")
 
@@ -128,7 +138,7 @@ def sayfa_plan():
                     fig = render_floor_plan(plan_data["plan"], title=f"Alternatif {i+1}")
                     st.pyplot(fig)
                 with col_score:
-                    st.markdown("### 📊 Puan Kartı")
+                    st.markdown("### Puan Karti")
                     score_dict = plan_data["score"].to_dict()
                     for k, v in score_dict.items():
                         if k == "TOPLAM":
@@ -136,26 +146,32 @@ def sayfa_plan():
                         else:
                             st.text(f"{k}: {v}")
                     if plan_data.get("reasoning"):
-                        st.info(f"💬 {plan_data['reasoning']}")
+                        st.info(f"{plan_data['reasoning']}")
 
                 # Oda listesi tablosu
                 if plan_data["plan"].rooms:
-                    st.markdown("**Oda Detayları:**")
-                    import pandas as pd
+                    st.markdown("**Oda Detaylari:**")
                     df = pd.DataFrame([{
-                        "Oda": r.name, "Boyut": f"{r.width:.1f}×{r.height:.1f}m",
-                        "Alan": f"{r.area:.1f} m²", "Cephe": r.facing_direction or "iç",
-                        "Dış Duvar": "✅" if r.has_exterior_wall else "—",
+                        "Oda": r.name, "Boyut": f"{r.width:.1f}x{r.height:.1f}m",
+                        "Alan": f"{r.area:.1f} m2", "Cephe": r.facing_direction or "ic",
+                        "Dis Duvar": "Var" if r.has_exterior_wall else "-",
                     } for r in plan_data["plan"].rooms])
                     st.dataframe(df, hide_index=True, use_container_width=True)
 
-                if st.button(f"✅ Plan {i+1}'i Seç", key=f"select_plan_{i}"):
+                # ── Plan Kalite Raporu ──
+                with st.expander("Plan Kalite Raporu", expanded=False):
+                    _render_kalite_raporu(plan_data)
+
+                # ── Disa aktarma butonlari ──
+                _render_export_buttons(plan_data, i)
+
+                if st.button(f"Plan {i+1}'i Sec", key=f"select_plan_{i}"):
                     st.session_state.selected_plan = plan_data
-                    st.success(f"Plan {i+1} seçildi!")
+                    st.success(f"Plan {i+1} secildi!")
 
         if len(plans) >= 2:
             st.markdown("---")
-            st.subheader("📊 Yan Yana Karşılaştırma")
+            st.subheader("Yan Yana Karsilastirma")
             fig_comp = render_plan_comparison(
                 [p["plan"] for p in plans],
                 [f"Alt. {i+1} ({p['score'].total:.0f}p)" for i, p in enumerate(plans)]
