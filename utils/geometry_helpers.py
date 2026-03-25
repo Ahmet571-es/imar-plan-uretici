@@ -4,9 +4,7 @@ Geometri Yardımcı Fonksiyonları — Parsel oluşturma, çekme hesapları, ala
 
 import math
 import numpy as np
-from shapely.geometry import Polygon, LineString, MultiPolygon
-from shapely.ops import unary_union
-from shapely.affinity import translate, rotate
+from shapely.geometry import Polygon, MultiPolygon
 
 
 def kenarlar_ve_acilardan_polygon(kenarlar: list[float], acilar: list[float]) -> Polygon:
@@ -210,7 +208,12 @@ def cekme_mesafesi_uygula(
     return result
 
 
-def _line_intersection(p1, p2, p3, p4):
+def _line_intersection(
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    p4: tuple[float, float],
+) -> tuple[float, float] | None:
     """İki doğru parçasının (sonsuz) kesişim noktasını bulur."""
     x1, y1 = p1
     x2, y2 = p2

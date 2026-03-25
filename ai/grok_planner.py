@@ -10,19 +10,32 @@ from core.plan_scorer import FloorPlan, PlanRoom
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are an expert Turkish architect. Design residential apartment floor plans
-based on the given constraints. Respond ONLY in valid JSON format.
+SYSTEM_PROMPT = """Sen uzman bir Türk mimarısın. Verilen kısıtlamalara göre konut daire kat planı tasarla.
+Cevabını SADECE geçerli JSON formatında ver.
 
-RULES:
-- All rooms must be rectangular.
-- Rooms must not overlap.
-- Wet areas (bathroom, WC, kitchen) should be clustered together.
-- Living room and balconies should face the sunniest direction.
-- Bedrooms should be in quieter zones (back/side).
-- Follow Turkish building codes: min room sizes, corridor widths.
+KURALLAR:
+- Tüm odalar dikdörtgen olmalı.
+- Odalar çakışmamalı.
+- Islak hacimler (banyo, wc, mutfak) gruplanmalı — aralarında max 5m mesafe.
+- Salon ve balkonlar güneş alan cepheye bakmalı.
+- Yatak odaları sessiz bölgelere (arka/yan) yerleştirilmeli.
 
-DATASET STATISTICS:
+TÜRK YAPI YÖNETMELİĞİ ZORUNLU KISITLARI (3194 sayılı İmar Kanunu):
+- Salon (oturma odası): minimum 16 m²
+- Yatak odası: minimum 9 m²
+- Mutfak: minimum 5 m²
+- Banyo: minimum 3.5 m²
+- WC: minimum 1.5 m²
+- Koridor genişliği: minimum 1.10 m
+- Pencere zorunluluğu: WC ve koridor hariç her oda pencere almalıdır
+- Pencere/zemin oranı: her odadaki pencere alanı, zemin alanının en az 1/8'i olmalı
+- Islak hacim gruplaması: banyo, wc ve mutfak ortak tesisat şaftına yakın olmalı
+- Kapı açılım yönü: banyo ve WC kapıları güvenlik gereği dışa açılmalıdır
+
+VERİ SETİ İSTATİSTİKLERİ:
 {dataset_rules}
+
+{previous_plans_section}
 
 JSON FORMAT:
 {{
@@ -40,7 +53,7 @@ JSON FORMAT:
           "windows": [{{"wall": "south", "position": 0.5, "width": 1.80}}]
         }}
       ],
-      "reasoning": "I placed the living room facing south because..."
+      "reasoning": "Salonu güney cepheye yerleştirdim çünkü..."
     }}
   ]
 }}"""
@@ -54,8 +67,25 @@ def generate_plans_grok(
     api_key: str = "",
     plan_count: int = 2,
     previous_feedback: str | None = None,
+    timeout: float = 30.0,
+    previous_plans: list[dict] | None = None,
 ) -> list[dict]:
-    """Grok 4.20 API ile plan üretir."""
+    """Grok API ile plan üretir.
+
+    Args:
+        polygon_coords: Yapılaşma alanı koordinatları.
+        apartment_program: Daire programı.
+        dataset_rules: Veri seti kuralları.
+        sun_direction: En iyi güneş yönü.
+        api_key: Grok/xAI API anahtarı.
+        plan_count: Üretilecek plan sayısı.
+        previous_feedback: Önceki iterasyondan geri bildirim.
+        timeout: API isteği zaman aşımı süresi (saniye, varsayılan 30s).
+        previous_plans: Önceki iterasyonlardaki plan özetleri (iteratif iyileştirme için).
+
+    Returns:
+        [{"floor_plan": FloorPlan, "reasoning": str}, ...]
+    """
     if not api_key:
         api_key = os.getenv("XAI_API_KEY", "")
 
@@ -65,10 +95,18 @@ def generate_plans_grok(
 
     try:
         from openai import OpenAI
-        client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
+        client = OpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=api_key,
+            timeout=timeout,
+        )
 
         rules_summary = _summarize_rules(dataset_rules)
-        system = SYSTEM_PROMPT.format(dataset_rules=rules_summary)
+        prev_section = _format_previous_plans(previous_plans)
+        system = SYSTEM_PROMPT.format(
+            dataset_rules=rules_summary,
+            previous_plans_section=prev_section,
+        )
         user_prompt = _build_prompt(polygon_coords, apartment_program, sun_direction, plan_count, previous_feedback)
 
         response = client.chat.completions.create(
@@ -113,6 +151,7 @@ Generate {plan_count} different plan alternatives with different layout strategi
 
 
 def _summarize_rules(dataset_rules: dict) -> str:
+    """Veri seti kurallarını prompt için özetler."""
     try:
         from dataset.dataset_rules import ROOM_SIZE_STATS
         lines = []
@@ -121,6 +160,36 @@ def _summarize_rules(dataset_rules: dict) -> str:
         return "\n".join(lines)
     except Exception:
         return str(dataset_rules)[:500]
+
+
+def _format_previous_plans(previous_plans: list[dict] | None) -> str:
+    """Önceki plan özetlerini sistem promptu için formatlar.
+
+    Iteratif iyileştirme desteği — AI'ya önceki planları göstererek
+    daha iyi alternatifler üretmesini sağlar.
+
+    Args:
+        previous_plans: Önceki plan özetleri listesi. Her öğe:
+            {"reasoning": str, "score": float, "room_summary": str}
+
+    Returns:
+        Formatlanmış metin veya boş string.
+    """
+    if not previous_plans:
+        return ""
+
+    lines = ["ÖNCEKİ PLANLAR (bunlardan daha iyi planlar üret):"]
+    for i, plan in enumerate(previous_plans, 1):
+        puan = plan.get("score", 0)
+        aciklama = plan.get("reasoning", "")
+        ozet = plan.get("room_summary", "")
+        lines.append(f"  Plan {i}: {puan:.0f} puan — {aciklama}")
+        if ozet:
+            lines.append(f"    Odalar: {ozet}")
+    lines.append(
+        "\nYukarıdaki planların zayıf yönlerini gider ve puanı artır."
+    )
+    return "\n".join(lines)
 
 
 def _parse_plans(data: dict) -> list[dict]:

@@ -11,7 +11,7 @@ import math
 import logging
 import requests
 from dataclasses import dataclass, field
-from shapely.geometry import Polygon, shape
+from shapely.geometry import Polygon
 
 logger = logging.getLogger(__name__)
 

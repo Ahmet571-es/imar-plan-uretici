@@ -1,10 +1,125 @@
 """
-Sayfa modülleri: Plan Üretimi, AI Tefriş, 3D Görselleştirme, Render.
+Sayfa modulleri: Plan Uretimi, AI Tefris, 3D Gorsellestirme, Render.
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
+
+
+# ═══════════════════════════════════════════════════════════════
+# LAYOUT TİP AÇIKLAMALARI (Türkçe)
+# ═══════════════════════════════════════════════════════════════
+
+_LAYOUT_ACIKLAMALARI = {
+    "center_corridor": "Merkez Koridor: Klasik Turk dairesi duzeni. Koridor ortada, odalar iki yanda.",
+    "l_shape": "L-Sekilli: Koridorun kosede donmesiyle olusturulan duzen. Dar parsellere uygun.",
+    "t_shape": "T-Sekilli: Koridorun T seklinde dallanmasi. Genis parsellere uygun.",
+    "short_corridor": "Kisa Koridor: Kompakt duzen, kucuk daireler icin ideal.",
+    "open_plan": "Acik Plan: Salon ve mutfak birlesik, modern yasam alani.",
+}
+
+
+def _render_kalite_raporu(plan_data: dict) -> None:
+    """Plan Kalite Raporu — oda bazinda pencere durumu, islak hacim gruplama
+    ve layout tipi aciklamasini gosterir.
+
+    Args:
+        plan_data: {"plan": FloorPlan, "score": ScoreBreakdown, ...}
+    """
+    plan = plan_data["plan"]
+    score = plan_data.get("score")
+
+    # 1. Oda bazinda pencere durumu
+    st.markdown("**Pencere Durumu (oda bazinda):**")
+    pencere_haric = ("koridor", "wc")
+    pencere_satirlari = []
+    for r in plan.rooms:
+        pencere_var = len(r.windows) > 0
+        zorunlu = r.room_type not in pencere_haric
+        durum = "Var" if pencere_var else ("YOK (zorunlu!)" if zorunlu else "Yok (zorunlu degil)")
+        pencere_satirlari.append({
+            "Oda": r.name,
+            "Tip": r.room_type,
+            "Pencere": durum,
+            "Pencere Sayisi": len(r.windows),
+        })
+    df_pencere = pd.DataFrame(pencere_satirlari)
+    st.dataframe(df_pencere, hide_index=True, use_container_width=True)
+
+    # 2. Islak hacim gruplama durumu
+    st.markdown("**Islak Hacim Gruplama Durumu:**")
+    from dataset.dataset_rules import is_wet_area
+    import math
+    islak_odalar = [r for r in plan.rooms if is_wet_area(r.room_type)]
+    if len(islak_odalar) >= 2:
+        max_mesafe = 0.0
+        for i, r1 in enumerate(islak_odalar):
+            for r2 in islak_odalar[i + 1:]:
+                dx = r1.center[0] - r2.center[0]
+                dy = r1.center[1] - r2.center[1]
+                mesafe = math.sqrt(dx * dx + dy * dy)
+                max_mesafe = max(max_mesafe, mesafe)
+        if max_mesafe <= 5.0:
+            st.success(f"Islak hacimler uygun sekilde gruplanmis (max mesafe: {max_mesafe:.1f}m)")
+        else:
+            st.warning(f"Islak hacimler arasi mesafe yuksek: {max_mesafe:.1f}m (onerilen: max 5m)")
+        islak_isimleri = ", ".join(r.name for r in islak_odalar)
+        st.text(f"  Islak hacimler: {islak_isimleri}")
+    else:
+        st.info("Tek islak hacim var, gruplama degerlendirmesi yapilamadi.")
+
+    # 3. Layout tipi aciklamasi
+    layout_type = getattr(plan, "layout_type", None)
+    if layout_type:
+        aciklama = _LAYOUT_ACIKLAMALARI.get(layout_type, f"Layout tipi: {layout_type}")
+        st.markdown(f"**Yerlestirme Duzeni:** {aciklama}")
+
+    # 4. Puan detaylari
+    if score and score.details:
+        st.markdown("**Puan Detaylari:**")
+        for detail in score.details:
+            st.text(f"  {detail}")
+
+
+def _render_export_buttons(plan_data: dict, plan_index: int) -> None:
+    """SVG ve DXF dışa aktarma butonlarını gösterir.
+
+    Args:
+        plan_data: {"plan": FloorPlan, ...} plan verisi sözlüğü.
+        plan_index: Plan sıra numarası (buton key'leri için benzersizlik sağlar).
+    """
+    col_svg, col_dxf = st.columns(2)
+
+    with col_svg:
+        try:
+            from export.svg_exporter import export_svg_string
+            # Plan nesnesinden SVG çıktısı üret
+            svg_str = export_svg_string(plan_data["plan"])
+            st.download_button(
+                label="📐 SVG İndir",
+                data=svg_str,
+                file_name=f"plan_{plan_index + 1}.svg",
+                mime="image/svg+xml",
+                key=f"dl_svg_{plan_index}",
+            )
+        except Exception as e:
+            st.warning(f"SVG oluşturulamadı: {e}")
+
+    with col_dxf:
+        try:
+            from export.dxf_exporter import export_dxf_bytes
+            # Plan nesnesinden DXF bayt dizisi üret
+            dxf_bytes = export_dxf_bytes(plan_data["plan"])
+            st.download_button(
+                label="📐 DXF İndir",
+                data=dxf_bytes,
+                file_name=f"plan_{plan_index + 1}.dxf",
+                mime="application/dxf",
+                key=f"dl_dxf_{plan_index}",
+            )
+        except Exception as e:
+            st.warning(f"DXF oluşturulamadı: {e}")
 
 
 def sayfa_plan():
@@ -81,12 +196,12 @@ def sayfa_plan():
         grok_key = st.session_state.get("grok_api_key", "")
 
         if not claude_key and not grok_key:
-            st.info("ℹ️ AI destekli plan üretimi için sidebar'dan API key girin. Profesyonel Üretim sekmesi API key olmadan çalışır.")
+            st.info("AI destekli plan uretimi icin sidebar'dan API key girin. Profesyonel Uretim sekmesi API key olmadan calisir.")
         else:
-            iteration = st.slider("İterasyon Sayısı", 1, 3, 1, key="plan_iter")
+            iteration = st.slider("Iterasyon Sayisi", 1, 3, 1, key="plan_iter")
 
-            if st.button("🤖 AI Plan Üret", type="primary", key="btn_gen_ai"):
-                with st.spinner("Dual AI planları üretiyor..."):
+            if st.button("AI Plan Uret", type="primary", key="btn_gen_ai"):
+                with st.spinner("Dual AI planlari uretiyor..."):
                     coords = list(hesap.cekme_polygonu.exterior.coords) if hesap.cekme_polygonu else [(ox,oy),(ox+bw,oy),(ox+bw,oy+bh),(ox,oy+bh)]
                     apt_program = {"tip": daire_tipi, "brut_alan": target_alan, "odalar": room_program or []}
 
@@ -107,16 +222,102 @@ def sayfa_plan():
                             for p in result.best_plans
                         ]
                     else:
-                        st.warning("AI plan üretemedi, profesyonel modda üretiliyor...")
+                        st.warning("AI plan uretemedi, profesyonel modda uretiyor...")
                         plans = generate_multiple_plans(bw, bh, ox, oy, room_program, daire_tipi, target_alan, sun_dir, plan_sayisi)
                         st.session_state.generated_plans = [
                             {"plan": p["floor_plan"], "score": p["score"], "reasoning": p["reasoning"]}
                             for p in plans
                         ]
 
+            # ── Plan Gecmisi ──
+            if st.session_state.get("plan_gecmisi"):
+                st.markdown("---")
+                with st.expander("Plan Gecmisi", expanded=False):
+                    gecmis = st.session_state.plan_gecmisi
+                    st.write(f"Toplam {len(gecmis)} plan uretildi.")
+                    for gi, gp in enumerate(gecmis):
+                        puan = gp.get("score")
+                        puan_str = f"{puan.total:.0f}" if puan else "?"
+                        aciklama = gp.get("reasoning", "")
+                        st.text(f"  Plan {gi+1}: {puan_str} puan - {aciklama[:60]}")
+
+            # ── AI Iyilestirme Iste ──
+            if st.session_state.get("generated_plans"):
+                st.markdown("---")
+                st.subheader("AI Iyilestirme")
+                iyilestirme_notu = st.text_area(
+                    "Iyilestirme talimatinizi girin (istege bagli):",
+                    placeholder="Ornegin: Salon daha buyuk olsun, yatak odalari arka cepheye alinsin...",
+                    key="ai_iyilestirme_notu",
+                )
+
+                if st.button("AI Iyilestirme Iste", type="secondary", key="btn_ai_iyilestir"):
+                    with st.spinner("AI mevcut plani iyilestiriyor..."):
+                        # Mevcut en iyi plani ozetle
+                        en_iyi = max(st.session_state.generated_plans,
+                                     key=lambda p: p["score"].total)
+                        onceki_planlar = []
+                        for p in st.session_state.generated_plans:
+                            oda_ozet = ", ".join(
+                                f"{r.name}({r.area:.0f}m2)"
+                                for r in p["plan"].rooms
+                            )
+                            onceki_planlar.append({
+                                "score": p["score"].total,
+                                "reasoning": p.get("reasoning", ""),
+                                "room_summary": oda_ozet,
+                            })
+
+                        coords = list(hesap.cekme_polygonu.exterior.coords) if hesap.cekme_polygonu else [(ox,oy),(ox+bw,oy),(ox+bw,oy+bh),(ox,oy+bh)]
+                        apt_program = {"tip": daire_tipi, "brut_alan": target_alan, "odalar": room_program or []}
+
+                        geri_bildirim = iyilestirme_notu or "Mevcut planlari iyilestir, puani artir."
+
+                        from ai.dual_ai_engine import generate_dual_ai_plans
+                        from dataset.dataset_rules import ROOM_SIZE_STATS
+                        # Geri bildirimi apt_program icine ekle (dual engine iceride kullanir)
+                        apt_program_iyilestirme = {
+                            **apt_program,
+                            "iyilestirme_notu": geri_bildirim,
+                        }
+                        result = generate_dual_ai_plans(
+                            buildable_polygon_coords=coords,
+                            apartment_program=apt_program_iyilestirme,
+                            dataset_rules=ROOM_SIZE_STATS,
+                            sun_best_direction=sun_dir,
+                            claude_api_key=claude_key,
+                            grok_api_key=grok_key,
+                            max_iterations=2,
+                        )
+                        if result.best_plans:
+                            st.session_state.generated_plans = [
+                                {"plan": p.plan, "score": p.score, "reasoning": p.reasoning}
+                                for p in result.best_plans
+                            ]
+                            st.success("AI iyilestirme tamamlandi!")
+                            st.rerun()
+                        else:
+                            st.warning("AI iyilestirme basarisiz. Profesyonel mod ile deneniyor...")
+                            plans = generate_multiple_plans(bw, bh, ox, oy, room_program, daire_tipi, target_alan, sun_dir, plan_sayisi)
+                            st.session_state.generated_plans = [
+                                {"plan": p["floor_plan"], "score": p["score"], "reasoning": p["reasoning"]}
+                                for p in plans
+                            ]
+                            st.rerun()
+
     # ── Plan gösterimi ──
     if "generated_plans" in st.session_state and st.session_state.generated_plans:
         plans = st.session_state.generated_plans
+
+        # Plan geçmişini session state'e kaydet (AI iyileştirme için)
+        if "plan_gecmisi" not in st.session_state:
+            st.session_state.plan_gecmisi = []
+        # Mevcut planları geçmişe ekle (tekrar eklemeyi önle)
+        mevcut_idler = {id(p["plan"]) for p in st.session_state.plan_gecmisi}
+        for p in plans:
+            if id(p["plan"]) not in mevcut_idler:
+                st.session_state.plan_gecmisi.append(p)
+
         st.markdown("---")
         st.subheader(f"🏗️ {len(plans)} Alternatif Plan")
 
@@ -128,7 +329,7 @@ def sayfa_plan():
                     fig = render_floor_plan(plan_data["plan"], title=f"Alternatif {i+1}")
                     st.pyplot(fig)
                 with col_score:
-                    st.markdown("### 📊 Puan Kartı")
+                    st.markdown("### Puan Karti")
                     score_dict = plan_data["score"].to_dict()
                     for k, v in score_dict.items():
                         if k == "TOPLAM":
@@ -136,26 +337,32 @@ def sayfa_plan():
                         else:
                             st.text(f"{k}: {v}")
                     if plan_data.get("reasoning"):
-                        st.info(f"💬 {plan_data['reasoning']}")
+                        st.info(f"{plan_data['reasoning']}")
 
                 # Oda listesi tablosu
                 if plan_data["plan"].rooms:
-                    st.markdown("**Oda Detayları:**")
-                    import pandas as pd
+                    st.markdown("**Oda Detaylari:**")
                     df = pd.DataFrame([{
-                        "Oda": r.name, "Boyut": f"{r.width:.1f}×{r.height:.1f}m",
-                        "Alan": f"{r.area:.1f} m²", "Cephe": r.facing_direction or "iç",
-                        "Dış Duvar": "✅" if r.has_exterior_wall else "—",
+                        "Oda": r.name, "Boyut": f"{r.width:.1f}x{r.height:.1f}m",
+                        "Alan": f"{r.area:.1f} m2", "Cephe": r.facing_direction or "ic",
+                        "Dis Duvar": "Var" if r.has_exterior_wall else "-",
                     } for r in plan_data["plan"].rooms])
                     st.dataframe(df, hide_index=True, use_container_width=True)
 
-                if st.button(f"✅ Plan {i+1}'i Seç", key=f"select_plan_{i}"):
+                # ── Plan Kalite Raporu ──
+                with st.expander("Plan Kalite Raporu", expanded=False):
+                    _render_kalite_raporu(plan_data)
+
+                # ── Disa aktarma butonlari ──
+                _render_export_buttons(plan_data, i)
+
+                if st.button(f"Plan {i+1}'i Sec", key=f"select_plan_{i}"):
                     st.session_state.selected_plan = plan_data
-                    st.success(f"Plan {i+1} seçildi!")
+                    st.success(f"Plan {i+1} secildi!")
 
         if len(plans) >= 2:
             st.markdown("---")
-            st.subheader("📊 Yan Yana Karşılaştırma")
+            st.subheader("Yan Yana Karsilastirma")
             fig_comp = render_plan_comparison(
                 [p["plan"] for p in plans],
                 [f"Alt. {i+1} ({p['score'].total:.0f}p)" for i, p in enumerate(plans)]
@@ -174,9 +381,14 @@ def sayfa_ai_tefris():
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
     )
 
+    # Plan yoksa demo plan oluştur
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce Kat Planı Üretimi sayfasından bir plan seçin.")
-        return
+        st.info("ℹ️ Henüz plan seçilmedi. Demo plan ile mobilya yerleşimi gösteriliyor.")
+        from core.floor_plan_generator import generate_professional_plan
+        from core.plan_scorer import score_plan
+        demo_plan = generate_professional_plan(16.0, 12.0, apartment_type="3+1", target_area=120, seed=42)
+        demo_score = score_plan(demo_plan, sun_best_direction="south")
+        plan_data = {"plan": demo_plan, "score": demo_score}
 
     plan = plan_data["plan"]
     st.info(f"📐 Seçili plan: {len(plan.rooms)} oda, {plan.total_area:.1f} m², Puan: {plan_data.get('score', type('',(),{'total':0})).total:.0f}/100")
@@ -216,9 +428,14 @@ def sayfa_3d():
     imar = st.session_state.get("imar")
     parsel = st.session_state.get("parsel")
 
+    # Plan yoksa demo plan oluştur
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce bir kat planı üretin ve seçin.")
-        return
+        st.info("ℹ️ Henüz plan üretilmedi. Demo plan ile 3D görselleştirme gösteriliyor.")
+        from core.floor_plan_generator import generate_professional_plan
+        from core.plan_scorer import score_plan
+        demo_plan = generate_professional_plan(16.0, 12.0, apartment_type="3+1", target_area=120, seed=42)
+        demo_score = score_plan(demo_plan, sun_best_direction="south")
+        plan_data = {"plan": demo_plan, "score": demo_score}
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -242,6 +459,38 @@ def sayfa_3d():
         selected_floor=selected_floor,
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    # ── Kat bazlı detaylı görüntüleme ──
+    if st.button("📐 Kat Bazlı Görüntüle", key="3d_kat_bazli"):
+        from visualization_3d.building_model import build_single_floor_model
+        for k in range(kat):
+            st.markdown(f"#### Kat {k + 1}")
+            fig_floor = build_single_floor_model(
+                plan=plan_data["plan"],
+                kat_no=k + 1,
+                parsel_coords=parsel_coords if k == 0 else None,
+                show_labels=True,
+                show_legend=(k == 0),
+            )
+            st.plotly_chart(fig_floor, use_container_width=True)
+
+    # ── Kat alanı özet metrikleri ──
+    plan_obj = plan_data["plan"]
+    if plan_obj and plan_obj.rooms:
+        st.markdown("---")
+        st.subheader("📊 Kat Alan Özeti")
+        toplam_net = sum(r.area for r in plan_obj.rooms)
+        salon_alan = sum(r.area for r in plan_obj.rooms if "salon" in r.room_type.lower())
+        yatak_alan = sum(r.area for r in plan_obj.rooms if "yatak" in r.room_type.lower())
+        islak_alan = sum(r.area for r in plan_obj.rooms if r.room_type.lower() in ("banyo", "wc"))
+        diger_alan = toplam_net - salon_alan - yatak_alan - islak_alan
+
+        mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+        mc1.metric("Toplam Net Alan", f"{toplam_net:.1f} m²")
+        mc2.metric("Salon", f"{salon_alan:.1f} m²")
+        mc3.metric("Yatak Odaları", f"{yatak_alan:.1f} m²")
+        mc4.metric("Islak Hacim", f"{islak_alan:.1f} m²")
+        mc5.metric("Diğer", f"{diger_alan:.1f} m²")
 
 
 def sayfa_render():

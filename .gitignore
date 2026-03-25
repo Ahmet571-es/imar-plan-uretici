@@ -9,3 +9,13 @@ dist/
 build/
 .venv/
 venv/
+
+# Streamlit secrets (API key'ler)
+.streamlit/secrets.toml
+
+# Test / geçici dosyalar
+.pytest_cache/
+*.sqlite
+/tmp/
+*.svg
+*.dxf

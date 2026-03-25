@@ -125,6 +125,96 @@ def sayfa_fizibilite():
         fig_heat = create_sensitivity_heatmap(matris, m_labels, f_labels)
         st.pyplot(fig_heat)
 
+        # ── PDF Rapor İndirme ──
+        st.markdown("---")
+        st.subheader("📄 Fizibilite Raporu")
+        try:
+            from export.feasibility_report import olustur_fizibilite_pdf
+            import tempfile
+
+            # Proje bilgilerini session state'ten topla
+            _imar = st.session_state.get("imar")
+            _hesap = st.session_state.get("hesaplama")
+            _proje_bilgileri = {
+                "proje_adi": "Konut Projesi",
+                "il": st.session_state.get("fiz_il", "Ankara"),
+                "ilce": "-",
+                "ada": "-",
+                "parsel": "-",
+                "parsel_alani": f"{_hesap.parsel_alani:.1f} m²" if _hesap else "-",
+                "kat_sayisi": _imar.kat_adedi if _imar else "-",
+                "taks": _imar.taks if _imar else "-",
+                "kaks": _imar.kaks if _imar else "-",
+            }
+            # Hesaplama sözlüğü
+            _hesap_dict = _hesap.ozet_dict() if _hesap and hasattr(_hesap, "ozet_dict") else {}
+            # Maliyet, gelir ve fizibilite sözlükleri
+            _maliyet_dict = maliyet.to_dict() if hasattr(maliyet, "to_dict") else {}
+            _gelir_dict = {
+                "toplam_gelir": f"₺{gelir.toplam_gelir:,.0f}",
+                "daire_sayisi": len(gelir.daire_gelirleri) if gelir.daire_gelirleri else 0,
+            }
+            _fiz_dict = fiz.to_dict() if hasattr(fiz, "to_dict") else {}
+
+            # Geçici dosyaya PDF oluştur
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                _pdf_path = tmp.name
+
+            olustur_fizibilite_pdf(
+                proje_bilgileri=_proje_bilgileri,
+                hesaplama=_hesap_dict,
+                maliyet=_maliyet_dict,
+                gelir=_gelir_dict,
+                fizibilite=_fiz_dict,
+                output_path=_pdf_path,
+            )
+
+            # PDF dosyasını oku ve indirme butonu göster
+            with open(_pdf_path, "rb") as _f:
+                _pdf_bytes = _f.read()
+
+            if _pdf_bytes:
+                st.download_button(
+                    label="📄 Fizibilite Raporu İndir (PDF)",
+                    data=_pdf_bytes,
+                    file_name="fizibilite_raporu.pdf",
+                    mime="application/pdf",
+                    key="dl_fizibilite_pdf",
+                )
+            else:
+                st.warning("PDF oluşturulamadı. reportlab kurulu olmayabilir.")
+        except Exception as _pdf_err:
+            st.warning(f"PDF rapor oluşturulamadı: {_pdf_err}")
+
+        # Monte Carlo simülasyonu
+        st.markdown("---")
+        st.subheader("🎲 Monte Carlo Risk Simülasyonu")
+        from analysis.feasibility import monte_carlo_simulasyonu, create_monte_carlo_chart
+
+        col_mc1, col_mc2 = st.columns(2)
+        with col_mc1:
+            mc_maliyet_std = st.slider("Maliyet Belirsizliği (%)", 5, 30, 10, key="mc_mal_std") / 100
+        with col_mc2:
+            mc_gelir_std = st.slider("Gelir Belirsizliği (%)", 5, 40, 15, key="mc_gel_std") / 100
+
+        if st.button("🎲 Simülasyon Çalıştır (5000 senaryo)", type="primary", key="btn_mc"):
+            mc = monte_carlo_simulasyonu(
+                maliyet.toplam_maliyet, gelir.toplam_gelir,
+                maliyet_std=mc_maliyet_std, gelir_std=mc_gelir_std,
+            )
+            st.session_state.mc_result = mc
+
+        if "mc_result" in st.session_state:
+            mc = st.session_state.mc_result
+            col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+            col_r1.metric("Zarar Olasılığı", f"%{mc['zarar_olasiligi']:.1f}")
+            col_r2.metric("Ortalama Kâr", f"₺{mc['kar_ortalama']:,.0f}")
+            col_r3.metric("En Kötü Senaryo (P5)", f"₺{mc['percentiles']['p5']:,.0f}")
+            col_r4.metric("En İyi Senaryo (P95)", f"₺{mc['percentiles']['p95']:,.0f}")
+
+            fig_mc = create_monte_carlo_chart(mc)
+            st.pyplot(fig_mc)
+
 
 def sayfa_deprem():
     """Sayfa 11 — Deprem Risk Analizi."""

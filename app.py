@@ -19,21 +19,154 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Stil ──
+# ── Stil — Profesyonel SaaS görünümü ve mobil uyumluluk ──
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.5rem; }
-    .stMetric > div { background: #f8f9fa; border-radius: 8px; padding: 12px; border-left: 4px solid #1E88E5; }
+    /* Genel düzen */
+    .block-container { padding-top: 1.5rem; max-width: 1200px; }
+
+    /* Metrik kartları — profesyonel görünüm */
+    .stMetric > div {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e8eaf6 100%);
+        border-radius: 10px;
+        padding: 14px;
+        border-left: 4px solid #1565C0;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .stMetric > div:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(21,101,192,0.15);
+    }
+    .stMetric label { color: #546E7A !important; font-size: 0.85rem; letter-spacing: 0.02em; }
+    .stMetric [data-testid="stMetricValue"] { color: #1565C0 !important; font-weight: 700; }
+    .stMetric [data-testid="stMetricDelta"] { font-size: 0.8rem; }
+
+    /* Kenar çubuğu */
     div[data-testid="stSidebar"] { background: #1a1a2e; }
     div[data-testid="stSidebar"] .stMarkdown p,
     div[data-testid="stSidebar"] .stMarkdown h1,
     div[data-testid="stSidebar"] .stMarkdown h2,
     div[data-testid="stSidebar"] .stMarkdown h3 { color: #e0e0e0; }
+
+    /* Bilgi kutuları */
     .success-box { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 12px; border-radius: 4px; margin: 8px 0; }
     .warning-box { background: #fff3e0; border-left: 4px solid #FF9800; padding: 12px; border-radius: 4px; margin: 8px 0; }
     .info-box { background: #e3f2fd; border-left: 4px solid #1E88E5; padding: 12px; border-radius: 4px; margin: 8px 0; }
+
+    /* Buton tutarlılığı */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #1565C0, #1E88E5);
+        border: none;
+        font-weight: 600;
+        transition: opacity 0.15s ease;
+    }
+    .stButton > button[kind="primary"]:hover { opacity: 0.9; }
+
+    /* İndirme butonları — ayırt edici stil */
+    .stDownloadButton > button {
+        border: 1px solid #1565C0;
+        color: #1565C0;
+        font-weight: 500;
+        transition: background 0.15s ease;
+    }
+    .stDownloadButton > button:hover {
+        background: #e3f2fd;
+    }
+
+    /* Tablo ve veri çerçevesi tutarlılığı */
+    .stDataFrame { border-radius: 8px; overflow: hidden; }
+
+    /* Sekmeler — tutarlı renk şeması */
+    .stTabs [data-baseweb="tab-highlight"] { background-color: #1565C0; }
+    .stTabs [data-baseweb="tab"] { font-weight: 500; }
+
+    /* Profesyonel alt bilgi */
+    .app-footer {
+        text-align: center;
+        padding: 1.5rem 0 0.5rem 0;
+        margin-top: 3rem;
+        border-top: 1px solid #e0e0e0;
+        color: #9e9e9e;
+        font-size: 0.75rem;
+        line-height: 1.6;
+    }
+    .app-footer a { color: #1565C0; text-decoration: none; }
+
+    /* Mobil uyumluluk */
+    @media (max-width: 768px) {
+        .block-container { padding: 0.5rem; }
+        div[data-testid="stSidebar"] { width: 250px !important; }
+        .stMetric > div { padding: 8px; font-size: 0.85rem; }
+        h1 { font-size: 1.4rem !important; }
+        h2 { font-size: 1.15rem !important; }
+        /* Mobilde tablo yatay kaydırma */
+        .stDataFrame { overflow-x: auto; }
+    }
+
+    /* Tablet uyumluluk */
+    @media (max-width: 1024px) and (min-width: 769px) {
+        .block-container { padding: 0.75rem; }
+        .stMetric > div { padding: 10px; }
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ── Basit Kimlik Doğrulama Katmanı ──
+# st.secrets içinde AUTH_ENABLED=true ise giriş formu gösterilir.
+# AUTH_ENABLED yoksa veya false ise doğrudan uygulamaya geçilir.
+# İleride Supabase Auth entegrasyonu için taslak görevi görür.
+
+
+def _kimlik_dogrulama_kontrol():
+    """Basit parola kapısı. Secrets'tan kullanıcı adı/parola doğrular.
+
+    Gerekli secrets anahtarları (AUTH_ENABLED=true olduğunda):
+        AUTH_USERNAME: Kullanıcı adı
+        AUTH_PASSWORD: Parola
+    """
+    try:
+        auth_aktif = st.secrets.get("AUTH_ENABLED", False)
+    except Exception:
+        # secrets.toml yoksa veya okunamazsa doğrulamayı atla
+        return True
+
+    # AUTH_ENABLED string olarak da gelebilir
+    if isinstance(auth_aktif, str):
+        auth_aktif = auth_aktif.lower() in ("true", "1", "yes", "evet")
+
+    if not auth_aktif:
+        return True
+
+    # Oturum zaten doğrulanmışsa tekrar sorma
+    if st.session_state.get("_authenticated", False):
+        return True
+
+    # Giriş formu göster
+    st.markdown("## 🔐 Giriş")
+    st.markdown("Bu uygulamaya erişmek için giriş yapmanız gerekmektedir.")
+
+    with st.form("login_form"):
+        kullanici_adi = st.text_input("Kullanıcı Adı", key="_login_user")
+        parola = st.text_input("Parola", type="password", key="_login_pass")
+        giris_btn = st.form_submit_button("Giriş Yap", type="primary")
+
+    if giris_btn:
+        dogru_kullanici = st.secrets.get("AUTH_USERNAME", "")
+        dogru_parola = st.secrets.get("AUTH_PASSWORD", "")
+
+        if kullanici_adi == dogru_kullanici and parola == dogru_parola:
+            st.session_state["_authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Kullanıcı adı veya parola hatalı.")
+
+    return False
+
+
+# Kimlik doğrulama kapısı — geçemezse uygulamanın geri kalanı çalışmaz
+if not _kimlik_dogrulama_kontrol():
+    st.stop()
 
 # ── Otomatik Kalıcılık Sistemi ──
 # Her değişiklikte /tmp'ye otomatik kaydet, sayfa yenilendiğinde otomatik yükle.
@@ -46,7 +179,11 @@ _AUTOSAVE_PATH = "/tmp/imar_plan_autosave.json"
 
 
 def _auto_save():
-    """Session state'i /tmp'ye otomatik kaydet."""
+    """Session state'i /tmp'ye otomatik kaydet.
+
+    # GÜVENLİK: API key'ler kaydedilmez. Sadece parsel/imar verileri yazılır.
+    # Önbellek: Yan etkili fonksiyon, @st.cache_data KULLANILMAZ.
+    """
     try:
         data = {"aktif_sayfa": st.session_state.get("aktif_sayfa", "1_parsel")}
         if st.session_state.get("parsel"):
@@ -60,10 +197,7 @@ def _auto_save():
                 "on_bahce": im.on_bahce, "yan_bahce": im.yan_bahce, "arka_bahce": im.arka_bahce,
                 "siginak_gerekli": im.siginak_gerekli, "otopark_gerekli": im.otopark_gerekli,
             }
-        if st.session_state.get("claude_api_key"):
-            data["claude_api_key"] = st.session_state.claude_api_key
-        if st.session_state.get("grok_api_key"):
-            data["grok_api_key"] = st.session_state.grok_api_key
+        # GÜVENLİK: API key'ler /tmp'ye kaydedilmez — sadece session'da tutulur.
 
         with open(_AUTOSAVE_PATH, "w") as f:
             _json.dump(data, f, ensure_ascii=False)
@@ -72,7 +206,10 @@ def _auto_save():
 
 
 def _auto_load():
-    """Sayfa yenilendiğinde /tmp'den otomatik yükle."""
+    """Sayfa yenilendiğinde /tmp'den otomatik yükle.
+
+    # Önbellek: Bu fonksiyon oturum durumuna bağlıdır, @st.cache_data KULLANILMAZ.
+    """
     if not _os.path.exists(_AUTOSAVE_PATH):
         return
     try:
@@ -95,12 +232,7 @@ def _auto_load():
         if "aktif_sayfa" in data:
             st.session_state.aktif_sayfa = data["aktif_sayfa"]
 
-        if "claude_api_key" in data and not st.session_state.get("claude_api_key"):
-            st.session_state.claude_api_key = data["claude_api_key"]
-            _os.environ["ANTHROPIC_API_KEY"] = data["claude_api_key"]
-        if "grok_api_key" in data and not st.session_state.get("grok_api_key"):
-            st.session_state.grok_api_key = data["grok_api_key"]
-            _os.environ["XAI_API_KEY"] = data["grok_api_key"]
+        # GÜVENLİK: API key'ler /tmp'den yüklenmez — sadece st.secrets veya kullanıcı girişi.
 
     except Exception:
         pass
@@ -228,6 +360,12 @@ with st.sidebar:
             st.session_state.aktif_sayfa = key
             st.rerun()
 
+    st.markdown("### 📖 YARDIM")
+    if st.button("📖 Kullanım Kılavuzu", key="nav_kilavuz", use_container_width=True,
+                 type="primary" if st.session_state.aktif_sayfa == "kilavuz" else "secondary"):
+        st.session_state.aktif_sayfa = "kilavuz"
+        st.rerun()
+
     st.markdown("---")
 
     # ── API Key Ayarları ──
@@ -274,7 +412,7 @@ with st.sidebar:
         else:
             st.caption("Grok API key girilmedi")
 
-    st.caption("v1.1 — FAZ 1-7 + Ajan Sistemi + UX")
+    st.caption("v2.0 — Profesyonel SaaS Platformu")
 
     # ── Otomatik Kaydetme Durumu ──
     has_data = st.session_state.get("parsel") is not None or st.session_state.get("imar") is not None
@@ -851,12 +989,20 @@ def sayfa_daire():
                             text = text.split("```json")[1].split("```")[0]
                         elif "```" in text:
                             text = text.split("```")[1].split("```")[0]
-                        parsed = json.loads(text)
+                        text = text.strip()
+                        try:
+                            parsed = json.loads(text)
+                        except json.JSONDecodeError as je:
+                            st.error(f"AI geçersiz JSON döndürdü: {je}")
+                            st.code(text[:500], language="text")
+                            st.stop()
 
                         # Parsed sonucu bina programına dönüştür
                         st.success("✅ AI analizi tamamlandı!")
                         st.json(parsed)
                         st.info("Yukarıdaki sonucu Manuel Giriş sekmesinden düzenleyebilirsiniz.")
+                    except json.JSONDecodeError:
+                        pass  # Zaten yukarıda ele alındı
                     except Exception as e:
                         st.error(f"AI analiz hatası: {e}")
             else:
@@ -930,6 +1076,350 @@ def sayfa_ajan_panel():
     from agents.agent_dashboard import render_agent_dashboard; render_agent_dashboard()
 
 
+def sayfa_kilavuz():
+    """Kullanım Kılavuzu — Adım adım detaylı yönlendirme."""
+    st.header("📖 Kullanım Kılavuzu")
+    st.markdown("Bu kılavuz, İmar Plan Üretici uygulamasını adım adım nasıl kullanacağınızı açıklar.")
+
+    # ── Genel Bakış ──
+    with st.expander("🏠 Genel Bakış — Uygulama Nedir?", expanded=True):
+        st.markdown("""
+**İmar Uyumlu Kat Planı Üretici**, Türkiye'ye özgü parsel ölçüleri ve imar parametrelerinden
+başlayarak kat planları üreten kapsamlı bir platformdur.
+
+**Ne Yapabilirsiniz?**
+- Parsel geometrinizi girerek imar hesaplamalarını otomatik yapabilirsiniz
+- 5 farklı layout tipinde profesyonel kat planları üretebilirsiniz
+- 3D bina modeli oluşturabilirsiniz
+- Mali fizibilite ve Monte Carlo risk analizi yapabilirsiniz
+- Deprem risk analizi ve enerji performans hesabı yapabilirsiniz
+- SVG, DXF (AutoCAD) ve PDF formatlarında dışa aktarabilirsiniz
+- AI (Claude + Grok) ile doğal dil komutlarıyla plan üretebilirsiniz
+
+**Önerilen İş Akışı:** Sayfaları 1'den 25'e doğru sırayla takip edin.
+        """)
+
+    # ── ADIM 1 ──
+    with st.expander("📍 ADIM 1 — Parsel Girişi (Sayfa 1)"):
+        st.markdown("""
+### Parsel Geometrinizi Tanımlayın
+
+**Manuel Giriş Sekmesi:**
+1. **Parsel Şekli** seçin: Dikdörtgen, Dörtgen, Beşgen, Altıgen veya Düzensiz
+2. **Kuzey Yönü** seçin (ön cephe yönü)
+3. Dikdörtgen için **En** ve **Boy** değerlerini metre cinsinden girin
+   - Örnek: En = 22m, Boy = 28m → 616 m² parsel
+4. Çokgen parseller için kenar uzunluklarını ve açıları girin
+5. **"Parseli Oluştur"** butonuna tıklayın
+
+**TKGM Otomatik Sekmesi:**
+1. İl, İlçe, Mahalle bilgilerini seçin
+2. Ada ve Parsel numarasını girin (örnek: Ada 1301, Parsel 7)
+3. **"Parsel Sorgula"** butonuna tıklayın
+4. TKGM API'den otomatik olarak parsel sınırları çekilir
+
+**Sonuç:** Sağ tarafta parsel alan, çevre, köşe sayısı ve çizimi görüntülenir.
+        """)
+
+    # ── ADIM 2 ──
+    with st.expander("🗺️ ADIM 2 — Konum & Çevre Analizi (Sayfa 2)"):
+        st.markdown("""
+### Konumunuzu Belirleyin
+
+1. **Enlem ve Boylam** değerlerini girin veya hızlı şehir seçimi yapın
+2. Harita üzerinde parselin konumunu görün
+3. **"Güneş Analizi Yap"** butonuna tıklayarak:
+   - En iyi cephe yönünü öğrenin (genellikle güney)
+   - Yıllık güneş saatini hesaplayın
+   - Cephe bazlı güneş dağılımını görün
+   - Salon ve balkon için optimum yön önerileri alın
+
+**İpucu:** Güneş analizi sonuçları, kat planı üretiminde salon ve balkon yönünü
+otomatik olarak optimize etmek için kullanılır.
+        """)
+
+    # ── ADIM 3 ──
+    with st.expander("📐 ADIM 3 — İmar Bilgileri (Sayfa 3)"):
+        st.markdown("""
+### Belediye İmar Parametrelerini Girin
+
+**Temel Parametreler:**
+1. **Kat Adedi** — Belediye imar planında izin verilen kat sayısı (örnek: 4)
+2. **İnşaat Nizamı** — A (Ayrık), B (Bitişik) veya BL (Blok)
+3. **TAKS** — Taban Alanı Kat Sayısı (örnek: 0.35 = parselin %35'i)
+4. **KAKS / Emsal** — Toplam inşaat alanı oranı (örnek: 1.40)
+
+**Çekme Mesafeleri:**
+5. **Ön Bahçe** — Yoldan minimum mesafe (genellikle 5m)
+6. **Yan Bahçe** — Komşu parselden minimum mesafe (genellikle 3m)
+7. **Arka Bahçe** — 0 girilirse H/2 kuralı otomatik uygulanır (Yönetmelik Madde 6)
+
+**Ek Gereksinimler:**
+8. Asansör (4+ katta otomatik zorunlu), Sığınak, Otopark seçenekleri
+
+**"İmar Bilgilerini Kaydet"** butonuna tıklayın.
+
+**Nereden Bulunur:** Bu bilgileri belediyenizin e-imar uygulamasından veya
+imar müdürlüğünden alabilirsiniz.
+        """)
+
+    # ── ADIM 4 ──
+    with st.expander("📊 ADIM 4 — Hesaplama Sonuçları (Sayfa 4)"):
+        st.markdown("""
+### Otomatik Hesaplama Sonuçlarını İnceleyin
+
+Bu sayfa parsel + imar bilgilerinden otomatik hesaplama yapar:
+
+**Görüntülenen Metrikler:**
+- **Parsel Alanı** — Girdiğiniz parselin toplam alanı
+- **Maks. Taban Alanı** — TAKS sınırına göre bina oturumu
+- **Toplam İnşaat Alanı** — KAKS × parsel alanı
+- **Kat Başı Net Alan** — Dairelere kalan alan (ortak alanlar düşülmüş)
+- **Emsal Harici Toplam** — Sığınak, otopark, merdiven, asansör, giriş holü
+
+**Görselleştirmeler:**
+- Ortak alan dağılımı pasta grafiği
+- Parsel + yapılaşma alanı üst üste çizimi
+
+**Uyarılar:** Çekme mesafeleri, KAKS/TAKS uyumsuzluğu, bina yüksekliği
+limiti gibi sorunlar otomatik tespit edilir.
+        """)
+
+    # ── ADIM 5 ──
+    with st.expander("🏠 ADIM 5 — Daire Bölümleme (Sayfa 5)"):
+        st.markdown("""
+### Daire Tipini ve Oda Programını Belirleyin
+
+**Manuel Giriş:**
+1. **Kat başına daire sayısı** seçin (1-8 arası)
+2. **Daire tipi** seçin (1+1, 2+1, 3+1, 4+1, 5+1)
+3. Her daire için önerilen alan otomatik hesaplanır
+4. **"Bina Programını Oluştur"** butonuna tıklayın
+5. Oda alanlarını tabloda düzenleyebilirsiniz
+6. Her oda için minimum alan kontrolü yapılır (İmar Kanunu'na göre)
+
+**AI ile Doğal Dil:**
+1. API Key'inizi sidebar'dan girin
+2. Doğal dille daire programınızı yazın:
+   - *"Her katta 2 daire, 3+1, salon 30m², yatak odaları 15m²"*
+3. AI analiz edip JSON formatında program oluşturur
+
+**Minimum Alan Kontrolleri:** Salon ≥16m², Yatak ≥9m², Mutfak ≥5m², Banyo ≥3.5m²
+        """)
+
+    # ── ADIM 6 ──
+    with st.expander("📋 ADIM 6 — Kat Planı Üretimi (Sayfa 6)"):
+        st.markdown("""
+### Profesyonel Kat Planları Üretin
+
+**Profesyonel Üretim (API key gerektirmez):**
+1. **Daire Tipi** ve **Güneş Yönü** seçin
+2. **Alternatif Sayısı** belirleyin (2-4 arası)
+3. **Hedef Daire Alanı** girin
+4. **"Profesyonel Plan Üret"** butonuna tıklayın
+5. Her plan 0-100 arası puanlanır (11 kriter)
+
+**5 Layout Tipi:**
+- Merkez Koridor (klasik Türk dairesi)
+- L-Şekilli Koridor
+- T-Şekilli Koridor
+- Kısa Koridor (kompakt)
+- Açık Plan (salon + mutfak birleşik)
+
+**Puanlama Kriterleri:** Oda boyut uyumu, bitişiklik, dış cephe erişimi,
+ıslak hacim gruplaması, güneş optimizasyonu, pencere/zemin oranı
+
+**Plan Seçimi:** Beğendiğiniz planın altındaki **"Plan Seç"** butonuna tıklayın.
+
+**Dışa Aktarma:** SVG ve DXF formatında indirme butonları her planın altında yer alır.
+
+**AI Destekli Üretim:** Claude + Grok dual AI motoru ile 4 alternatif üretir,
+çapraz değerlendirme yapar, en iyi 3'ü seçer.
+        """)
+
+    # ── ADIM 7 ──
+    with st.expander("🤖 ADIM 7 — AI İyileştirme & Tefriş (Sayfa 7)"):
+        st.markdown("""
+### Mobilya Yerleştirme ve AI İyileştirme
+
+1. Seçili plan otomatik yüklenir
+2. **"Mobilya Yerleştir"** butonuna tıklayın
+3. Her oda tipi için uygun mobilyalar otomatik yerleştirilir:
+   - Salon: koltuk takımı, TV ünitesi, sehpa
+   - Yatak odası: yatak, komodin, dolap
+   - Mutfak: tezgah, ocak, buzdolabı, masa
+   - Banyo: küvet/duş, lavabo, klozet
+4. Mobilya listesi sağ panelde görüntülenir
+5. Plan + mobilya birlikte çizilir
+        """)
+
+    # ── ADIM 8 ──
+    with st.expander("🏗️ ADIM 8 — 3D Görselleştirme (Sayfa 8)"):
+        st.markdown("""
+### İnteraktif 3D Bina Modeli
+
+1. Seçili plan otomatik yüklenir (yoksa demo plan gösterilir)
+2. **Kat Sayısı** ayarlayın
+3. **Çatı Tipi** seçin: Kırma (eğimli) veya Teras (düz)
+4. **Patlak Görünüm** ile katları ayrı ayrı görün
+5. **Kat Filtre** ile tek bir katı inceleyin
+6. Fare ile döndürme, yakınlaştırma, kaydırma yapabilirsiniz
+
+**3D Modelde Görünenler:**
+- Duvarlar (dış/iç farklı renk)
+- Pencereler (cam yüzey + çerçeve)
+- Kapılar
+- Merdiven (basamak detayı)
+- Balkon (korkuluk dikmeleri)
+- Çatı (kırma veya teras)
+- Parsel zemin alanı
+        """)
+
+    # ── ADIM 9-10 ──
+    with st.expander("💰 ADIM 9 — Mali Fizibilite (Sayfa 10)"):
+        st.markdown("""
+### Yatırım Fizibilite Analizi
+
+**Parametreleri Girin:**
+1. **İl** seçin (bölgesel maliyet farkı uygulanır)
+2. **Yapı Kalitesi** seçin: Ekonomik / Orta / Lüks
+3. **Arsa Maliyeti** girin (₺)
+4. **m² Satış Fiyatı** girin (₺)
+5. **"Fizibilite Hesapla"** butonuna tıklayın
+
+**Sonuçlar:**
+- Toplam Maliyet / Gelir / Kâr-Zarar
+- Kâr Marjı (%) ve ROI (%)
+- Başabaş m² satış fiyatı
+- Kârlılık endeksi ve yatırım geri dönüş süresi
+- Maliyet dağılım grafiği
+
+**Duyarlılık Analizi:** Maliyet ve satış fiyatındaki değişimlerin
+kâr marjına etkisini 4×5 ısı haritasında görün.
+
+**Monte Carlo Simülasyonu:**
+1. Maliyet ve gelir belirsizlik oranlarını ayarlayın
+2. **"Simülasyon Çalıştır"** butonuna tıklayın (5000 senaryo)
+3. Zarar olasılığını, P5/P50/P95 değerlerini ve histogram grafiğini görün
+
+**PDF Rapor:** Hesaplama sonrası **"📄 Fizibilite Raporu İndir"** butonu ile
+profesyonel PDF rapor indirin.
+        """)
+
+    # ── ADIM 10 ──
+    with st.expander("🔬 ADIM 10 — Deprem Risk Analizi (Sayfa 11)"):
+        st.markdown("""
+### TBDY 2018 Deprem Risk Değerlendirmesi
+
+1. **Enlem/Boylam** girin (veya konum sayfasından aktarılır)
+2. **Kat Sayısı** girin
+3. **Zemin Sınıfı** seçin:
+   - ZA: Sağlam kaya
+   - ZB: Kaya
+   - ZC: Çok sıkı kum/sert kil (en yaygın)
+   - ZD: Sıkı kum/katı kil
+   - ZE: Yumuşak zemin
+4. **"Deprem Analizi Yap"** butonuna tıklayın
+
+**Sonuçlar:**
+- Risk seviyesi (Düşük / Orta / Yüksek / Çok Yüksek)
+- Ss (kısa periyot) ve S1 (1sn periyot) ivme değerleri
+- Taşıyıcı sistem önerisi (Çerçeve, Perde, Tünel Kalıp vb.)
+- Kolon grid önerisi
+- Detaylı analiz tablosu
+        """)
+
+    # ── ADIM 11 ──
+    with st.expander("⚡ ADIM 11 — Enerji Performans (Sayfa 12)"):
+        st.markdown("""
+### Bina Enerji Kimlik Belgesi Tahmini
+
+1. **Duvar Yalıtımı** seçin (5cm EPS → 12cm XPS)
+2. **Pencere Tipi** seçin (Tek cam → Low-E)
+3. **Çatı Yalıtımı** ve **Isıtma Sistemi** seçin
+4. **Pencere/Duvar Oranı** ayarlayın (0.15 - 0.50)
+5. **"Enerji Hesapla"** butonuna tıklayın
+
+**Sonuçlar:**
+- Enerji sınıfı (A-G) renkli gösterge
+- Yıllık ısıtma/soğutma tüketimi (kWh/m²·yıl)
+- Yıllık enerji maliyeti (₺)
+- İyileştirme önerileri
+        """)
+
+    # ── Agentler ──
+    with st.expander("🤖 ADIM 12 — Otonom Agentler (Sayfa 23-25)"):
+        st.markdown("""
+### Agent Sistemi ile Toplu Analiz
+
+**Ajan Kontrol Paneli (Sayfa 23):**
+1. 4 farklı ajan ve 1 orkestratör bulunur
+2. **"Tüm Ajanları Çalıştır"** butonuna tıklayın
+3. İlerleme çubuğu ile durumu takip edin
+
+**Ajanlar:**
+- **Plan Optimizasyon** — 200 plan varyasyonu üretir, en iyilerini seçer
+- **Maliyet Optimizasyon** — 4 yapı sistemi × 3 malzeme karşılaştırır
+- **Daire Karması** — 2+1/3+1/4+1 kombinasyonlarını kârlılığa göre optimize eder
+- **Toplu Fizibilite** — 8 farklı parseli toplu analiz eder
+
+**Fırsat Merkezi (Sayfa 24):** Ajan sonuçlarından en kârlı fırsatları listeler
+**Piyasa İstihbarat (Sayfa 25):** Plan kalite istatistikleri ve aksiyon önerileri
+        """)
+
+    # ── API Ayarları ──
+    with st.expander("🔑 API Ayarları"):
+        st.markdown("""
+### AI Özelliklerini Aktifleştirme
+
+Uygulama API key olmadan da çalışır (algoritmik plan üretimi).
+AI destekli özellikler için:
+
+1. **Claude API Key:** [console.anthropic.com](https://console.anthropic.com) adresinden alın
+2. **Grok API Key:** [console.x.ai](https://console.x.ai) adresinden alın
+3. Sidebar'daki **"API Ayarları"** bölümünden girin
+
+**API Key olmadan çalışan özellikler:**
+- Tüm imar hesaplamaları
+- Profesyonel plan üretimi (5 layout tipi)
+- 3D görselleştirme
+- Mali fizibilite ve Monte Carlo
+- Deprem / enerji / güneş analizi
+- Agent sistemi
+- SVG / DXF / PDF export
+
+**API Key gerektiren özellikler:**
+- AI destekli plan üretimi (Dual Engine)
+- Doğal dil daire bölümleme
+- Fotogerçekçi render
+- AI plan iyileştirme
+        """)
+
+    # ── Sık Sorulan Sorular ──
+    with st.expander("❓ Sık Sorulan Sorular"):
+        st.markdown("""
+**S: TAKS ve KAKS değerlerini nereden bulurum?**
+C: Belediyenizin e-imar uygulamasından veya imar müdürlüğünden temin edebilirsiniz.
+
+**S: Arka bahçe mesafesi nedir?**
+C: 0 girerseniz otomatik olarak H/2 kuralı uygulanır (bina yüksekliğinin yarısı).
+
+**S: Plan puanı ne anlama gelir?**
+C: 0-100 arası bir değerdir. 11 kriter üzerinden değerlendirilir:
+oda boyutları, bitişiklik, dış cephe, ıslak hacim gruplaması, güneş yönü,
+koridor verimliliği, pencere/zemin oranı, yapısal grid, yönetmelik uyumu.
+
+**S: DXF dosyasını nerede açabilirim?**
+C: AutoCAD, LibreCAD, DraftSight gibi CAD yazılımlarında açabilirsiniz.
+
+**S: API key güvenliği nasıl sağlanır?**
+C: API key'ler sadece oturum süresince bellekte tutulur, diske kaydedilmez.
+
+**S: Uygulama hangi yönetmeliklere uyar?**
+C: Planlı Alanlar İmar Yönetmeliği (03.07.2017/30113) ve TBDY 2018.
+        """)
+
+
 # ── Placeholder'lar (Dış API gerektiren sayfalar) ──
 def placeholder_sayfa(baslik, faz, aciklama=""):
     st.header(baslik)
@@ -938,14 +1428,166 @@ def placeholder_sayfa(baslik, faz, aciklama=""):
         st.markdown(aciklama)
 
 def sayfa_whatsapp():
-    placeholder_sayfa("📱 WhatsApp Bot", "FAZ 8", "Twilio/Green API ile sahadan hızlı fizibilite sorgusu.")
+    """Sayfa 19 — WhatsApp Bot yapılandırma ve mesaj simülasyonu."""
+    st.header("📱 WhatsApp Bot")
+
+    st.markdown("""
+    WhatsApp üzerinden sahadan hızlı fizibilite sorgusu yapılabilir.
+    Entegrasyon için **Green API** veya **Twilio** hesabı gerekir.
+    """)
+
+    # API yapılandırma
+    with st.expander("API Yapılandırma", expanded=False):
+        provider = st.selectbox("Servis Sağlayıcı", ["Green API", "Twilio"], key="wa_provider")
+        if provider == "Green API":
+            st.text_input("Instance ID", type="password", key="wa_instance")
+            st.text_input("API Token", type="password", key="wa_token")
+        else:
+            st.text_input("Account SID", type="password", key="wa_sid")
+            st.text_input("Auth Token", type="password", key="wa_auth")
+        st.caption("API bilgileri sadece bu oturumda tutulur, kaydedilmez.")
+
+    # Mesaj simülasyonu
+    st.subheader("Mesaj Simülasyonu")
+    st.info("API yapılandırılmadan demo modda mesaj simülasyonu yapabilirsiniz.")
+
+    ornek_mesajlar = [
+        "Ankara Çankaya'da 600m² parsel, 4 kat TAKS 0.35 KAKS 1.40 fizibilite hesapla",
+        "İstanbul Kadıköy 450m² arsa ne kadar kâr getirir?",
+        "3+1 daire maliyeti nedir Ankara Etimesgut?",
+    ]
+    secili = st.selectbox("Örnek Mesaj", ornek_mesajlar, key="wa_ornek")
+
+    mesaj = st.text_input("Mesaj Girin", value=secili, key="wa_mesaj")
+
+    if st.button("📤 Simüle Et", type="primary", key="wa_gonder"):
+        with st.spinner("Analiz ediliyor..."):
+            # Basit anahtar kelime analizi
+            yanit = _whatsapp_demo_yanit(mesaj)
+            st.session_state.wa_yanit = yanit
+
+    if "wa_yanit" in st.session_state:
+        st.markdown("---")
+        st.markdown("**🤖 Bot Yanıtı:**")
+        st.success(st.session_state.wa_yanit)
+
+    # Mesaj geçmişi
+    st.markdown("---")
+    st.subheader("Mesaj Geçmişi")
+    if "wa_gecmis" not in st.session_state:
+        st.session_state.wa_gecmis = []
+    if "wa_yanit" in st.session_state and mesaj:
+        kayit = {"mesaj": mesaj, "yanit": st.session_state.wa_yanit}
+        if not st.session_state.wa_gecmis or st.session_state.wa_gecmis[-1] != kayit:
+            st.session_state.wa_gecmis.append(kayit)
+    for g in reversed(st.session_state.wa_gecmis[-10:]):
+        st.markdown(f"📩 **{g['mesaj']}**")
+        st.markdown(f"🤖 {g['yanit']}")
+        st.markdown("---")
+
+
+def _whatsapp_demo_yanit(mesaj: str) -> str:
+    """WhatsApp demo: basit anahtar kelime bazlı yanıt üretici."""
+    mesaj_lower = mesaj.lower()
+    if "fizibilite" in mesaj_lower or "kâr" in mesaj_lower or "kar" in mesaj_lower:
+        return (
+            "📊 Hızlı Fizibilite Tahmini:\n"
+            "• Tahmini inşaat maliyeti: ~₺25-30M\n"
+            "• Tahmini satış geliri: ~₺35-40M\n"
+            "• Kâr marjı: %15-25\n\n"
+            "Detaylı analiz için uygulamamıza girin: [link]"
+        )
+    elif "maliyet" in mesaj_lower or "fiyat" in mesaj_lower:
+        return (
+            "💰 Maliyet Tahmini:\n"
+            "• Orta kalite konut: ₺28.000-35.000/m²\n"
+            "• Lüks konut: ₺42.000-55.000/m²\n"
+            "• Arsa maliyeti hariç\n\n"
+            "Bölgeye özel fiyat için il/ilçe belirtin."
+        )
+    elif "parsel" in mesaj_lower or "arsa" in mesaj_lower:
+        return (
+            "📍 Parsel Analizi:\n"
+            "TKGM üzerinden parsel sorgulaması yapabiliriz.\n"
+            "Lütfen il, ilçe, ada ve parsel numarasını gönderin.\n"
+            "Örnek: Ankara Çankaya 1301 ada 7 parsel"
+        )
+    else:
+        return (
+            "Merhaba! İmar Plan Üretici Bot'a hoş geldiniz.\n\n"
+            "Şu komutları kullanabilirsiniz:\n"
+            "• 'fizibilite' — Hızlı fizibilite tahmini\n"
+            "• 'maliyet' — İnşaat maliyet tahmini\n"
+            "• 'parsel' — TKGM parsel sorgusu\n\n"
+            "Örnek: 'Ankara 600m² parsel fizibilite hesapla'"
+        )
+
 
 def sayfa_veri():
-    placeholder_sayfa("🔄 Veri Güncelleme", "FAZ 9", "Sahibinden, TCMB, TÜİK scraper'ları + otomatik güncelleme.")
+    """Sayfa 20 — Veri Güncelleme ve dış kaynak entegrasyonu."""
+    st.header("🔄 Veri Güncelleme")
+
+    st.markdown("Dış kaynaklardan güncel veri çekme ve yerel veritabanını güncelleme.")
+
+    # TCMB Döviz
+    st.subheader("💱 TCMB Döviz Kurları")
+    if st.button("Döviz Kurlarını Güncelle", key="veri_doviz"):
+        with st.spinner("TCMB'den veri çekiliyor..."):
+            try:
+                import requests
+                resp = requests.get("https://www.tcmb.gov.tr/kurlar/today.xml", timeout=10)
+                if resp.status_code == 200:
+                    # Basit XML parse
+                    content = resp.text
+                    import re
+                    usd_match = re.search(r'<Currency.*?Kod="USD".*?<BanknoteSelling>([\d.,]+)', content, re.DOTALL)
+                    eur_match = re.search(r'<Currency.*?Kod="EUR".*?<BanknoteSelling>([\d.,]+)', content, re.DOTALL)
+                    usd = float(usd_match.group(1).replace(",", ".")) if usd_match else 0
+                    eur = float(eur_match.group(1).replace(",", ".")) if eur_match else 0
+                    st.session_state.doviz = {"USD": usd, "EUR": eur}
+                    st.success("Döviz kurları güncellendi!")
+                else:
+                    st.warning("TCMB'ye erişilemedi. Demo veriler gösteriliyor.")
+                    st.session_state.doviz = {"USD": 36.50, "EUR": 39.80}
+            except Exception:
+                st.session_state.doviz = {"USD": 36.50, "EUR": 39.80}
+                st.info("TCMB erişimi başarısız. Demo veriler kullanılıyor.")
+
+    if "doviz" in st.session_state:
+        col1, col2 = st.columns(2)
+        col1.metric("USD/TRY", f"₺{st.session_state.doviz['USD']:.2f}")
+        col2.metric("EUR/TRY", f"₺{st.session_state.doviz['EUR']:.2f}")
+
+    # İnşaat Maliyet Endeksi
+    st.markdown("---")
+    st.subheader("🏗️ İnşaat Maliyet Endeksi")
+    import pandas as pd
+    endeks_data = {
+        "Dönem": ["2025 Q1", "2025 Q2", "2025 Q3", "2025 Q4", "2026 Q1"],
+        "Endeks": [842.5, 871.3, 895.7, 923.1, 948.6],
+        "Değişim (%)": ["+3.8", "+3.4", "+2.8", "+3.1", "+2.8"],
+    }
+    st.dataframe(pd.DataFrame(endeks_data), hide_index=True, use_container_width=True)
+    st.caption("Kaynak: TÜİK İnşaat Maliyet Endeksi (demo veriler)")
+
+    # Bölgesel Fiyatlar
+    st.markdown("---")
+    st.subheader("📊 Bölgesel m² Satış Fiyatları")
+    from config.cost_defaults import get_iller
+    iller = get_iller()
+    secili_il = st.selectbox("İl Seçin", iller, key="veri_il")
+
+    fiyat_data = {
+        "Daire Tipi": ["1+1", "2+1", "3+1", "4+1"],
+        "Ort. m² Fiyat (₺)": ["35.000", "38.000", "42.000", "48.000"],
+        "Değişim (Yıllık)": ["+18%", "+15%", "+12%", "+10%"],
+    }
+    st.dataframe(pd.DataFrame(fiyat_data), hide_index=True, use_container_width=True)
+    st.caption(f"Kaynak: {secili_il} bölgesi tahmini fiyatlar (demo veriler)")
 
 def sayfa_crm():
     """CRM Sayfası — Müşteri ve proje takibi."""
-    st.header("CRM — Musteri ve Proje Takibi")
+    st.header("CRM — Müşteri ve Proje Takibi")
 
     from database.db import get_engine
     try:
@@ -955,22 +1597,22 @@ def sayfa_crm():
         engine = None
 
     # Müşteri ekleme formu
-    with st.expander("Yeni Musteri Ekle", expanded=False):
+    with st.expander("Yeni Müşteri Ekle", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             mus_ad = st.text_input("Ad Soyad", key="crm_ad")
             mus_tel = st.text_input("Telefon", key="crm_tel")
             mus_email = st.text_input("E-posta", key="crm_email")
         with col2:
-            mus_tip = st.selectbox("Musteri Tipi",
-                                    ["Bireysel", "Kurumsal", "Muteahhit"],
+            mus_tip = st.selectbox("Müşteri Tipi",
+                                    ["Bireysel", "Kurumsal", "Müteahhit"],
                                     key="crm_tip")
             mus_durum = st.selectbox("Durum",
-                                      ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"],
+                                      ["Aday", "Görüşme", "Teklif", "Sözleşme", "Tamamlandı"],
                                       key="crm_durum")
             mus_not = st.text_area("Notlar", key="crm_not", height=68)
 
-        if st.button("Musteri Kaydet", type="primary", key="crm_kaydet"):
+        if st.button("Müşteri Kaydet", type="primary", key="crm_kaydet"):
             if not mus_ad:
                 st.warning("Ad Soyad zorunludur.")
             else:
@@ -980,25 +1622,25 @@ def sayfa_crm():
                     "ad": mus_ad, "tel": mus_tel, "email": mus_email,
                     "tip": mus_tip, "durum": mus_durum, "not": mus_not,
                 })
-                st.success(f"Musteri eklendi: {mus_ad}")
+                st.success(f"Müşteri eklendi: {mus_ad}")
                 st.rerun()
 
     # Proje ekleme
     with st.expander("Yeni Proje Ekle", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
-            prj_ad = st.text_input("Proje Adi", key="crm_prj_ad")
-            prj_il = st.text_input("Il/Ilce", key="crm_prj_il")
+            prj_ad = st.text_input("Proje Adı", key="crm_prj_ad")
+            prj_il = st.text_input("İl/İlçe", key="crm_prj_il")
         with col2:
             prj_durum = st.selectbox("Proje Durumu",
-                                      ["Fizibilite", "Tasarim", "Ruhsat", "Insaat", "Teslim"],
+                                      ["Fizibilite", "Tasarım", "Ruhsat", "İnşaat", "Teslim"],
                                       key="crm_prj_durum")
-            prj_butce = st.number_input("Butce (TL)", 0, 100_000_000, 5_000_000,
+            prj_butce = st.number_input("Bütçe (TL)", 0, 100_000_000, 5_000_000,
                                          step=100_000, key="crm_prj_butce")
 
         if st.button("Proje Kaydet", type="primary", key="crm_prj_kaydet"):
             if not prj_ad:
-                st.warning("Proje adi zorunludur.")
+                st.warning("Proje adı zorunludur.")
             else:
                 if "crm_projeler" not in st.session_state:
                     st.session_state.crm_projeler = []
@@ -1010,7 +1652,7 @@ def sayfa_crm():
                 st.rerun()
 
     # Müşteri listesi
-    st.subheader("Musteri Listesi")
+    st.subheader("Müşteri Listesi")
     musteriler = st.session_state.get("crm_musteriler", [])
     if musteriler:
         import pandas as pd
@@ -1018,22 +1660,26 @@ def sayfa_crm():
         st.dataframe(df, use_container_width=True)
 
         # Kanban görünüm
-        st.subheader("Kanban Gorunum")
-        durumlar = ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"]
+        st.subheader("Kanban Görünüm")
+        durumlar = ["Aday", "Görüşme", "Teklif", "Sözleşme", "Tamamlandı"]
         cols = st.columns(len(durumlar))
         for i, durum in enumerate(durumlar):
             with cols[i]:
                 st.markdown(f"**{durum}**")
                 filtered = [m for m in musteriler if m["durum"] == durum]
                 for m in filtered:
+                    # GÜVENLİK: Kullanıcı girdisi HTML'e eklenmeden önce temizlenir (XSS önlemi)
+                    import html as _html_mod
+                    _safe_ad = _html_mod.escape(str(m['ad']))
+                    _safe_tel = _html_mod.escape(str(m.get('tel', '')))
                     st.markdown(
                         f"<div style='background:#f0f0f0; padding:8px; "
                         f"border-radius:4px; margin:4px 0; font-size:12px;'>"
-                        f"<b>{m['ad']}</b><br>{m.get('tel','')}</div>",
+                        f"<b>{_safe_ad}</b><br>{_safe_tel}</div>",
                         unsafe_allow_html=True,
                     )
     else:
-        st.info("Henuz musteri eklenmedi. Yukaridaki formdan ekleyebilirsiniz.")
+        st.info("Henüz müşteri eklenmedi. Yukarıdaki formdan ekleyebilirsiniz.")
 
     # Proje listesi
     st.subheader("Proje Listesi")
@@ -1043,71 +1689,74 @@ def sayfa_crm():
         df_p = pd.DataFrame(projeler)
         st.dataframe(df_p, use_container_width=True)
     else:
-        st.info("Henuz proje eklenmedi.")
+        st.info("Henüz proje eklenmedi.")
 
 
 def sayfa_workflow():
-    """Is Akisi Motoru — Gorev zamanlama ve workflow editor."""
-    st.header("Is Akisi Motoru")
+    """İş Akışı Motoru — Görev zamanlama ve workflow editor."""
+    st.header("İş Akışı Motoru")
 
     # Hazır şablonlar
-    st.subheader("Hazir Is Akisi Sablonlari")
+    st.subheader("Hazır İş Akışı Şablonları")
 
     sablonlar = {
         "Standart Konut Projesi": [
             {"gorev": "Parsel analizi", "sure_gun": 2, "bagimllik": None},
-            {"gorev": "Imar parametreleri belirleme", "sure_gun": 1, "bagimllik": "Parsel analizi"},
-            {"gorev": "Fizibilite raporu", "sure_gun": 3, "bagimllik": "Imar parametreleri belirleme"},
-            {"gorev": "Kat plani tasarimi", "sure_gun": 5, "bagimllik": "Fizibilite raporu"},
-            {"gorev": "3D modelleme", "sure_gun": 3, "bagimllik": "Kat plani tasarimi"},
-            {"gorev": "Yapi ruhsati basvurusu", "sure_gun": 10, "bagimllik": "Kat plani tasarimi"},
-            {"gorev": "Insaat baslangici", "sure_gun": 0, "bagimllik": "Yapi ruhsati basvurusu"},
+            {"gorev": "İmar parametreleri belirleme", "sure_gun": 1, "bagimllik": "Parsel analizi"},
+            {"gorev": "Fizibilite raporu", "sure_gun": 3, "bagimllik": "İmar parametreleri belirleme"},
+            {"gorev": "Kat planı tasarımı", "sure_gun": 5, "bagimllik": "Fizibilite raporu"},
+            {"gorev": "3D modelleme", "sure_gun": 3, "bagimllik": "Kat planı tasarımı"},
+            {"gorev": "Yapı ruhsatı başvurusu", "sure_gun": 10, "bagimllik": "Kat planı tasarımı"},
+            {"gorev": "İnşaat başlangıcı", "sure_gun": 0, "bagimllik": "Yapı ruhsatı başvurusu"},
         ],
-        "Hizli Fizibilite": [
-            {"gorev": "Parsel secimi", "sure_gun": 1, "bagimllik": None},
-            {"gorev": "Otomatik hesaplama", "sure_gun": 0, "bagimllik": "Parsel secimi"},
+        "Hızlı Fizibilite": [
+            {"gorev": "Parsel seçimi", "sure_gun": 1, "bagimllik": None},
+            {"gorev": "Otomatik hesaplama", "sure_gun": 0, "bagimllik": "Parsel seçimi"},
             {"gorev": "Maliyet analizi", "sure_gun": 1, "bagimllik": "Otomatik hesaplama"},
-            {"gorev": "Rapor olusturma", "sure_gun": 1, "bagimllik": "Maliyet analizi"},
+            {"gorev": "Rapor oluşturma", "sure_gun": 1, "bagimllik": "Maliyet analizi"},
         ],
-        "Tam Proje Sureci": [
-            {"gorev": "Arazi kesfesi", "sure_gun": 3, "bagimllik": None},
-            {"gorev": "Jeolojik etut", "sure_gun": 15, "bagimllik": "Arazi kesfesi"},
-            {"gorev": "Mimari proje", "sure_gun": 30, "bagimllik": "Jeolojik etut"},
+        "Tam Proje Süreci": [
+            {"gorev": "Arazi keşfesi", "sure_gun": 3, "bagimllik": None},
+            {"gorev": "Jeolojik etüt", "sure_gun": 15, "bagimllik": "Arazi keşfesi"},
+            {"gorev": "Mimari proje", "sure_gun": 30, "bagimllik": "Jeolojik etüt"},
             {"gorev": "Statik proje", "sure_gun": 20, "bagimllik": "Mimari proje"},
             {"gorev": "Tesisat projeleri", "sure_gun": 15, "bagimllik": "Mimari proje"},
-            {"gorev": "Ruhsat sureci", "sure_gun": 30, "bagimllik": "Statik proje"},
-            {"gorev": "Insaat (kaba)", "sure_gun": 120, "bagimllik": "Ruhsat sureci"},
-            {"gorev": "Insaat (ince)", "sure_gun": 90, "bagimllik": "Insaat (kaba)"},
-            {"gorev": "Iskan", "sure_gun": 30, "bagimllik": "Insaat (ince)"},
+            {"gorev": "Ruhsat süreci", "sure_gun": 30, "bagimllik": "Statik proje"},
+            {"gorev": "İnşaat (kaba)", "sure_gun": 120, "bagimllik": "Ruhsat süreci"},
+            {"gorev": "İnşaat (ince)", "sure_gun": 90, "bagimllik": "İnşaat (kaba)"},
+            {"gorev": "İskân", "sure_gun": 30, "bagimllik": "İnşaat (ince)"},
         ],
     }
 
-    sablon_sec = st.selectbox("Sablon Sec", list(sablonlar.keys()),
+    sablon_sec = st.selectbox("Şablon Seç", list(sablonlar.keys()),
                                key="wf_sablon")
 
-    if st.button("Sablonu Yukle", type="primary", key="wf_yukle"):
+    if st.button("Şablonu Yükle", type="primary", key="wf_yukle"):
         st.session_state.wf_gorevler = list(sablonlar[sablon_sec])
-        st.success(f"Sablon yuklendi: {sablon_sec}")
+        st.success(f"Şablon yüklendi: {sablon_sec}")
 
     # Görev listesi
     gorevler = st.session_state.get("wf_gorevler", [])
 
     if gorevler:
-        st.subheader("Gorev Listesi")
+        st.subheader("Görev Listesi")
         import pandas as pd
         df = pd.DataFrame(gorevler)
         st.dataframe(df, use_container_width=True)
 
         # Basit Gantt görünümü
-        st.subheader("Zaman Cizelgesi")
+        st.subheader("Zaman Çizelgesi")
         cumulative_day = 0
         for g in gorevler:
             days = g["sure_gun"]
             bar_width = max(days * 3, 10)
             left_offset = cumulative_day * 3
+            # GÜVENLİK: Kullanıcı girdisi HTML'e eklenmeden önce temizlenir (XSS önlemi)
+            import html as _html_mod
+            _safe_gorev = _html_mod.escape(str(g['gorev']))
             st.markdown(
                 f"<div style='display:flex; align-items:center; margin:2px 0;'>"
-                f"<div style='width:200px; font-size:11px;'>{g['gorev']}</div>"
+                f"<div style='width:200px; font-size:11px;'>{_safe_gorev}</div>"
                 f"<div style='margin-left:{left_offset}px; background:#1E88E5; "
                 f"height:18px; width:{bar_width}px; border-radius:3px; "
                 f"color:white; font-size:10px; padding:1px 4px;'>"
@@ -1116,21 +1765,21 @@ def sayfa_workflow():
             )
             cumulative_day += days
 
-        st.caption(f"Toplam tahmini sure: {sum(g['sure_gun'] for g in gorevler)} gun")
+        st.caption(f"Toplam tahmini süre: {sum(g['sure_gun'] for g in gorevler)} gün")
 
     # Manuel görev ekleme
-    with st.expander("Gorev Ekle", expanded=False):
+    with st.expander("Görev Ekle", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
-            yeni_gorev = st.text_input("Gorev Adi", key="wf_yeni_gorev")
+            yeni_gorev = st.text_input("Görev Adı", key="wf_yeni_gorev")
         with col2:
-            yeni_sure = st.number_input("Sure (gun)", 0, 365, 5, key="wf_yeni_sure")
+            yeni_sure = st.number_input("Süre (gün)", 0, 365, 5, key="wf_yeni_sure")
         with col3:
             mevcut = [g["gorev"] for g in gorevler] if gorevler else []
-            yeni_bag = st.selectbox("Bagimlilik",
+            yeni_bag = st.selectbox("Bağımlılık",
                                      [None] + mevcut, key="wf_yeni_bag")
 
-        if st.button("Gorev Ekle", key="wf_ekle"):
+        if st.button("Görev Ekle", key="wf_ekle"):
             if yeni_gorev:
                 if "wf_gorevler" not in st.session_state:
                     st.session_state.wf_gorevler = []
@@ -1139,7 +1788,7 @@ def sayfa_workflow():
                     "sure_gun": yeni_sure,
                     "bagimllik": yeni_bag,
                 })
-                st.success(f"Gorev eklendi: {yeni_gorev}")
+                st.success(f"Görev eklendi: {yeni_gorev}")
                 st.rerun()
 
 
@@ -1172,6 +1821,7 @@ SAYFA_MAP = {
     "23_ajan_panel":  sayfa_ajan_panel,
     "24_firsat":      sayfa_firsat,
     "25_piyasa":      sayfa_piyasa,
+    "kilavuz":        sayfa_kilavuz,
 }
 
 # ── Progress indicator ──
@@ -1181,15 +1831,36 @@ try:
 except Exception:
     pass
 
-# Aktif sayfayı göster
+# Aktif sayfayı göster — hata yakalama ile sarmalanmış
 sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
-sayfa_fonksiyonu()
+try:
+    sayfa_fonksiyonu()
+except Exception as e:
+    import logging as _logging
+    _logging.getLogger(__name__).exception("Sayfa yüklenirken hata: %s", e)
+    st.error(f"Sayfa yüklenirken hata oluştu: {e}")
+    st.info("Lütfen sayfayı yenileyin veya farklı parametrelerle tekrar deneyin.")
+    # Geliştirme modunda detaylı hata bilgisi göster
+    if os.environ.get("DEBUG", "").lower() in ("1", "true"):
+        import traceback
+        st.code(traceback.format_exc(), language="text")
 
 # ── Sonraki Adım butonu ──
 try:
     render_next_step_button(st.session_state.aktif_sayfa)
 except Exception:
     pass
+
+# ── Profesyonel alt bilgi — sürüm ve ortam bilgisi ──
+_db_tipi = "PostgreSQL (Supabase)" if os.environ.get("SUPABASE_DB_URL") else "SQLite (yerel)"
+st.markdown(
+    '<div class="app-footer">'
+    '<strong>İmar Plan Üretici v2.0</strong> — Profesyonel İmar Uyumlu Kat Planı Üretim Platformu<br>'
+    f'Veritabanı: {_db_tipi} · Python 3.11 · Streamlit<br>'
+    '© 2026 Tüm hakları saklıdır.'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 # ── Her render sonrası otomatik kaydet ──
 _auto_save()

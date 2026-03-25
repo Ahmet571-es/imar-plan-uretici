@@ -6,9 +6,43 @@ Claude API ile kat planı alternatiflerini üretir.
 import json
 import logging
 import os
+import time
 from core.plan_scorer import FloorPlan, PlanRoom
 
 logger = logging.getLogger(__name__)
+
+# ── İstek hız sınırlama takibi ──
+_rate_limit_tracker = {
+    "toplam_istek": 0,
+    "son_istek_zamani": 0.0,
+    "dakika_basi_limit": 10,
+}
+
+
+def get_rate_limit_stats() -> dict:
+    """Mevcut hız sınırlama istatistiklerini döndürür."""
+    return dict(_rate_limit_tracker)
+
+
+def _check_rate_limit() -> bool:
+    """Hız sınırını kontrol eder. Sınır aşılmışsa True döndürür."""
+    now = time.time()
+    elapsed = now - _rate_limit_tracker["son_istek_zamani"]
+    # Dakika başı limit kontrolü — son istekten 60/limit saniye geçmesi gerekir
+    min_interval = 60.0 / _rate_limit_tracker["dakika_basi_limit"]
+    if elapsed < min_interval and _rate_limit_tracker["toplam_istek"] > 0:
+        logger.warning(
+            f"Hız sınırı: son istekten {elapsed:.1f}s geçti, "
+            f"minimum {min_interval:.1f}s beklenmeli."
+        )
+        return True
+    return False
+
+
+def _record_request():
+    """Yapılan isteği kaydet."""
+    _rate_limit_tracker["toplam_istek"] += 1
+    _rate_limit_tracker["son_istek_zamani"] = time.time()
 
 SYSTEM_PROMPT = """Sen uzman bir Türk mimarısın. Verilen kısıtlamalara göre konut daire kat planı tasarla.
 
@@ -16,17 +50,28 @@ KURALLAR:
 1. Tüm odalar dikdörtgen olmalı (basit geometri).
 2. Odalar çakışmamalı — hiçbir oda diğerinin üzerine binmemeli.
 3. Tüm odalar yapılaşma alanı (buildable polygon) içinde kalmalı.
-4. Islak hacimler (banyo, wc, mutfak) mümkünse gruplanmalı.
+4. Islak hacimler (banyo, wc, mutfak) mümkünse gruplanmalı — aralarında max 5m mesafe.
 5. Salon ve balkonlar güneş alan cepheye bakmalı.
 6. Yatak odaları sessiz cepheye (arka/yan) yerleştirilmeli.
 7. Antre kapıdan girişte ilk karşılaşılan alan olmalı.
 8. Koridor tüm odalara erişimi sağlamalı.
-9. Türk yapı yönetmeliği minimum ölçüleri:
-   - Oturma odası min 12m², Yatak odası min 9m², Mutfak min 5m²
-   - Banyo min 3.5m², WC min 1.5m², Koridor genişliği min 1.10m
+
+TÜRK YAPI YÖNETMELİĞİ ZORUNLU KISITLARı (3194 sayılı İmar Kanunu):
+- Salon (oturma odası): minimum 16 m²
+- Yatak odası: minimum 9 m²
+- Mutfak: minimum 5 m²
+- Banyo: minimum 3.5 m²
+- WC: minimum 1.5 m²
+- Koridor genişliği: minimum 1.10 m
+- Pencere zorunluluğu: WC ve koridor hariç her oda pencere almalıdır
+- Pencere/zemin oranı: her odadaki pencere alanı, zemin alanının en az 1/8'i olmalı
+- Islak hacim gruplaması: banyo, wc ve mutfak ortak tesisat şaftına yakın olmalı
+- Kapı açılım yönü: banyo ve WC kapıları güvenlik gereği dışa açılmalıdır
 
 VERİ SETİ İSTATİSTİKLERİ:
 {dataset_rules}
+
+{previous_plans_section}
 
 Cevabını SADECE aşağıdaki JSON formatında ver, başka hiçbir metin ekleme:
 {{
@@ -60,6 +105,7 @@ def generate_plans_claude(
     api_key: str = "",
     plan_count: int = 2,
     previous_feedback: str | None = None,
+    previous_plans: list[dict] | None = None,
 ) -> list[dict]:
     """Claude API ile plan üretir.
 
@@ -71,6 +117,7 @@ def generate_plans_claude(
         api_key: Claude API anahtarı.
         plan_count: Üretilecek plan sayısı.
         previous_feedback: Önceki iterasyondan geri bildirim.
+        previous_plans: Önceki iterasyonlardaki plan özetleri (iteratif iyileştirme için).
 
     Returns:
         [{"floor_plan": FloorPlan, "reasoning": str}, ...]
@@ -83,16 +130,26 @@ def generate_plans_claude(
         return _generate_demo_plans(polygon_coords, apartment_program, plan_count)
 
     try:
+        # Hız sınırı kontrolü
+        if _check_rate_limit():
+            logger.warning("Hız sınırı aşıldı, demo plana düşülüyor.")
+            return _generate_demo_plans(polygon_coords, apartment_program, plan_count)
+
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
         rules_summary = _summarize_rules(dataset_rules)
-        system = SYSTEM_PROMPT.format(dataset_rules=rules_summary)
+        prev_section = _format_previous_plans(previous_plans)
+        system = SYSTEM_PROMPT.format(
+            dataset_rules=rules_summary,
+            previous_plans_section=prev_section,
+        )
 
         user_prompt = _build_user_prompt(
             polygon_coords, apartment_program, sun_direction, plan_count, previous_feedback
         )
 
+        _record_request()
         response = client.messages.create(
             model="claude-sonnet-4-6-20250514",
             max_tokens=4096,
@@ -142,6 +199,36 @@ def _summarize_rules(dataset_rules: dict) -> str:
         return "\n".join(lines)
     except Exception:
         return str(dataset_rules)[:1000]
+
+
+def _format_previous_plans(previous_plans: list[dict] | None) -> str:
+    """Önceki plan özetlerini sistem promptu için formatlar.
+
+    Iteratif iyileştirme desteği — AI'ya önceki planları göstererek
+    daha iyi alternatifler üretmesini sağlar.
+
+    Args:
+        previous_plans: Önceki plan özetleri listesi. Her öğe:
+            {"reasoning": str, "score": float, "room_summary": str}
+
+    Returns:
+        Formatlanmış metin veya boş string.
+    """
+    if not previous_plans:
+        return ""
+
+    lines = ["ÖNCEKİ PLANLAR (bunlardan daha iyi planlar üret):"]
+    for i, plan in enumerate(previous_plans, 1):
+        puan = plan.get("score", 0)
+        aciklama = plan.get("reasoning", "")
+        ozet = plan.get("room_summary", "")
+        lines.append(f"  Plan {i}: {puan:.0f} puan — {aciklama}")
+        if ozet:
+            lines.append(f"    Odalar: {ozet}")
+    lines.append(
+        "\nYukarıdaki planların zayıf yönlerini gider ve puanı artır."
+    )
+    return "\n".join(lines)
 
 
 def _parse_plans(data: dict) -> list[dict]:

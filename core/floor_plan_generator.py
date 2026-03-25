@@ -15,49 +15,84 @@ Gerçek mimari planlara yakın sonuçlar üretir:
 - 2 daireli kat planı desteği
 """
 
+import logging
 import math
 import random
 from dataclasses import dataclass, field
 from core.plan_scorer import FloorPlan, PlanRoom
+from config.room_defaults import MINIMUM_ODA_ALANLARI
 from dataset.dataset_rules import (
     ROOM_SIZE_STATS, ROOM_ASPECT_RATIOS, ADJACENCY_PROBABILITY,
     ROOM_EXTERIOR_WALL_PRIORITY, ROOM_PLACEMENT_RULES,
     WET_AREA_CLUSTERING, calculate_ideal_dimensions,
 )
 
-
 # ═══════════════════════════════════════════════════════════════
-# VERİ YAPILARI
-# ═══════════════════════════════════════════════════════════════
-
-@dataclass
-class RoomSlot:
-    """Yerleştirme öncesi oda slotu."""
-    name: str
-    room_type: str
-    target_area: float
-    min_width: float = 2.0
-    priority: int = 5         # Dış cephe önceliği (1=en yüksek)
-    is_wet: bool = False
-    placed: bool = False
-    # Yerleştirme sonrası
-    x: float = 0.0
-    y: float = 0.0
-    width: float = 0.0
-    height: float = 0.0
-
-
-# ═══════════════════════════════════════════════════════════════
-# LAYOUT TİPLERİ
+# ALT MODÜLLERDEN İÇE AKTARIMLAR
+# (Geriye dönük uyumluluk: bu modülden yapılan tüm import'lar çalışmaya
+#  devam eder.)
 # ═══════════════════════════════════════════════════════════════
 
-LAYOUT_TYPES = [
-    "center_corridor",     # Merkez koridor (klasik)
-    "l_shape",             # L-şekilli koridor
-    "t_shape",             # T-şekilli koridor
-    "short_corridor",      # Kısa koridor (kompakt)
-    "open_plan",           # Salon-mutfak açık plan
-]
+from core.geometry.room_slots import RoomSlot, _create_room_slots, _default_room_program  # noqa: F401,E501
+from core.geometry.corridor_layouts import (  # noqa: F401
+    LAYOUT_TYPES,
+    _select_layout_type,
+    _create_corridor_spine,
+    _create_center_corridor,
+    _create_l_corridor,
+    _create_t_corridor,
+    _create_short_corridor,
+    _create_open_plan_corridor,
+)
+from core.geometry.room_placement import (  # noqa: F401
+    _get_sun_zone,
+    _place_rooms_in_zone,
+    _place_single_room,
+    _find_best_zone,
+    _force_place_remaining,
+    _place_wet_rooms_adjacent,
+)
+from core.geometry.plan_finalization import _convert_to_plan_rooms  # noqa: F401
+
+
+logger = logging.getLogger(__name__)  # noqa: E305
+
+# Islak hacim tipleri (banyo, wc, mutfak)
+_ISLAK_HACIM_TIPLERI = {"banyo", "wc", "mutfak"}
+# Islak hacimler arası maksimum mesafe eşiği (metre)
+_ISLAK_HACIM_MAX_MESAFE = 5.0
+
+
+def _verify_wet_area_proximity(rooms) -> None:  # noqa: E302
+    """Islak hacimlerin (banyo, wc, mutfak) ortak tesisat şaft bölgesine
+    yakınlığını doğrular.
+
+    Yerleştirme sonrası çağrılır. Islak hacimler arası merkez-merkez mesafe
+    5 metreyi aşıyorsa uyarı loglar.
+    """
+    islak_odalar = [r for r in rooms
+                    if isinstance(r, PlanRoom) and r.room_type in _ISLAK_HACIM_TIPLERI]
+
+    if len(islak_odalar) < 2:
+        return
+
+    max_mesafe = 0.0
+    en_uzak_cift = ("", "")
+
+    for i, r1 in enumerate(islak_odalar):
+        for r2 in islak_odalar[i + 1:]:
+            dx = (r1.x + r1.width / 2) - (r2.x + r2.width / 2)
+            dy = (r1.y + r1.height / 2) - (r2.y + r2.height / 2)
+            mesafe = math.sqrt(dx * dx + dy * dy)
+            if mesafe > max_mesafe:
+                max_mesafe = mesafe
+                en_uzak_cift = (r1.name, r2.name)
+
+    if max_mesafe > _ISLAK_HACIM_MAX_MESAFE:
+        logger.debug(
+            "Islak hacim yakınlık: %s ile %s arası %.1f m (eşik: %.1f m)",
+            en_uzak_cift[0], en_uzak_cift[1], max_mesafe, _ISLAK_HACIM_MAX_MESAFE
+        )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -139,7 +174,7 @@ def generate_professional_plan(
                                  exterior_side=sun_direction)
         slots = other_slots + [s for s in salon_mut_slots if not s.placed]
 
-    # 2. Islak hacimleri grupla (ortak şaft bölgesine)
+    # 2. Islak hacimleri grupla (ortak şaft bölgesine — bitişik yerleştir)
     wet_slots = [s for s in slots if s.is_wet and not s.placed]
     dry_slots = [s for s in slots if not s.is_wet and s.room_type != "koridor"
                  and not s.placed]
@@ -151,7 +186,8 @@ def generate_professional_plan(
         ensuite_slots = [s for s in wet_slots if "ebeveyn" in s.name.lower()
                          or "en-suite" in s.name.lower()]
         normal_wet = [s for s in wet_slots if s not in ensuite_slots]
-        _place_rooms_in_zone(normal_wet, wet_zone, rooms, exterior_side="none")
+        # Islak hacimleri bitişik yerleştir — ortak tesisat şaftı için
+        _place_wet_rooms_adjacent(normal_wet, wet_zone, rooms)
 
     # 3. Salon + balkon → güneş cephesine
     sun_zone = _get_sun_zone(layout_zones, sun_direction, entrance_side)
@@ -228,6 +264,9 @@ def generate_professional_plan(
     if unplaced:
         _force_place_remaining(unplaced, rooms, bw, bh, ox, oy)
 
+    # ── Islak hacim yakınlık kontrolü (yerleştirme sonrası) ──
+    _verify_wet_area_proximity(rooms)
+
     # ── Kapı ve pencereleri ekle ──
     plan_rooms = _convert_to_plan_rooms(rooms, bw, bh, ox, oy,
                                          sun_direction, entrance_side,
@@ -240,719 +279,6 @@ def generate_professional_plan(
     plan.open_plan = open_plan_kitchen
     plan.en_suite = en_suite
     return plan
-
-
-# ═══════════════════════════════════════════════════════════════
-# ODA PROGRAMI
-# ═══════════════════════════════════════════════════════════════
-
-def _default_room_program(apt_type: str, target: float,
-                           open_plan: bool = False,
-                           en_suite: bool = False) -> list[dict]:
-    """Daire tipine göre varsayılan oda programı."""
-    programs = {
-        "1+1": [
-            ("Salon", "salon", 0.33), ("Yatak Odası", "yatak_odasi", 0.22),
-            ("Mutfak", "mutfak", 0.15), ("Banyo", "banyo", 0.10),
-            ("Antre", "antre", 0.08), ("Balkon", "balkon", 0.08),
-        ],
-        "2+1": [
-            ("Salon", "salon", 0.26), ("Yatak Odası 1", "yatak_odasi", 0.16),
-            ("Yatak Odası 2", "yatak_odasi", 0.13), ("Mutfak", "mutfak", 0.12),
-            ("Banyo", "banyo", 0.07), ("WC", "wc", 0.03),
-            ("Antre", "antre", 0.06), ("Koridor", "koridor", 0.06),
-            ("Balkon", "balkon", 0.06),
-        ],
-        "3+1": [
-            ("Salon", "salon", 0.23), ("Yatak Odası 1", "yatak_odasi", 0.13),
-            ("Yatak Odası 2", "yatak_odasi", 0.11),
-            ("Yatak Odası 3", "yatak_odasi", 0.09),
-            ("Mutfak", "mutfak", 0.10), ("Banyo", "banyo", 0.055),
-            ("WC", "wc", 0.025), ("Antre", "antre", 0.05),
-            ("Koridor", "koridor", 0.05), ("Balkon", "balkon", 0.055),
-        ],
-        "4+1": [
-            ("Salon", "salon", 0.21), ("Yatak Odası 1", "yatak_odasi", 0.11),
-            ("Yatak Odası 2", "yatak_odasi", 0.10),
-            ("Yatak Odası 3", "yatak_odasi", 0.08),
-            ("Yatak Odası 4", "yatak_odasi", 0.08), ("Mutfak", "mutfak", 0.09),
-            ("Banyo 1", "banyo", 0.05), ("Banyo 2", "banyo", 0.035),
-            ("WC", "wc", 0.025), ("Antre", "antre", 0.04),
-            ("Koridor", "koridor", 0.05), ("Balkon", "balkon", 0.05),
-        ],
-    }
-    room_defs = list(programs.get(apt_type, programs["3+1"]))
-
-    # Açık plan salon-mutfak
-    if open_plan:
-        salon_r = next((r for n, t, r in room_defs if t == "salon"), 0.23)
-        mutfak_r = next((r for n, t, r in room_defs if t == "mutfak"), 0.10)
-        room_defs = [(n, t, r) for n, t, r in room_defs
-                     if t not in ("salon", "mutfak")]
-        room_defs.insert(0, ("Salon + Mutfak", "salon_mutfak",
-                             salon_r + mutfak_r))
-
-    # En-suite banyo
-    if en_suite and apt_type in ("3+1", "4+1"):
-        room_defs.append(("Ebeveyn Banyosu", "banyo", 0.04))
-
-    return [{"isim": n, "tip": t, "m2": round(target * r, 1)}
-            for n, t, r in room_defs]
-
-
-def _create_room_slots(room_program: list[dict]) -> list[RoomSlot]:
-    """Oda programından slot'lar oluşturur."""
-    slots = []
-    wet_types = {"banyo", "wc", "mutfak"}
-    for rd in room_program:
-        tip = rd.get("tip", "diger")
-        if tip == "koridor":
-            continue  # Koridor ayrıca oluşturulur
-        slots.append(RoomSlot(
-            name=rd.get("isim", "Oda"),
-            room_type=tip if tip != "salon_mutfak" else "salon",
-            target_area=rd.get("m2", 10),
-            priority=ROOM_EXTERIOR_WALL_PRIORITY.get(
-                tip if tip != "salon_mutfak" else "salon", 5),
-            is_wet=tip in wet_types,
-            min_width=1.5 if tip in ("wc",) else 2.0,
-        ))
-    return slots
-
-
-# ═══════════════════════════════════════════════════════════════
-# LAYOUT TİPİ SEÇİMİ VE KORİDOR OMURGASI
-# ═══════════════════════════════════════════════════════════════
-
-def _select_layout_type(bw: float, bh: float, apt_type: str,
-                         seed: int | None) -> str:
-    """Bina boyutları ve daire tipine göre layout tipi seçer."""
-    aspect = bw / bh if bh > 0 else 1.0
-
-    # Ağırlıklı olasılıklar
-    weights = {
-        "center_corridor": 0.25,
-        "l_shape": 0.20,
-        "t_shape": 0.15,
-        "short_corridor": 0.20,
-        "open_plan": 0.20,
-    }
-
-    # Dar parsellerde L-şekil tercih
-    if aspect < 0.7:
-        weights["l_shape"] = 0.35
-        weights["center_corridor"] = 0.15
-    # Geniş parsellerde T-şekil tercih
-    elif aspect > 1.5:
-        weights["t_shape"] = 0.30
-        weights["center_corridor"] = 0.15
-    # Küçük dairelerde kısa koridor tercih
-    if apt_type in ("1+1", "2+1"):
-        weights["short_corridor"] = 0.35
-        weights["t_shape"] = 0.10
-
-    layout_list = list(weights.keys())
-    layout_weights = [weights[k] for k in layout_list]
-    return random.choices(layout_list, weights=layout_weights, k=1)[0]
-
-
-def _create_corridor_spine(bw, bh, ox, oy, entrance_side, layout_type):
-    """Koridor omurgası ve yerleştirme bölgeleri — layout tipine göre.
-
-    Tipik Türk dairesi düzeni:
-    ┌──────────────────────────────┐
-    │  Yatak 1  │ Koridor │ Banyo  │  ← Arka (kuzey)
-    │───────────│         │────────│
-    │  Yatak 2  │         │  WC    │
-    │───────────│         │────────│
-    │   Salon   │         │ Mutfak │  ← Ön (güney, giriş)
-    │  +Balkon  │  Antre  │        │
-    └──────────────────────────────┘
-    """
-    if layout_type == "l_shape":
-        return _create_l_corridor(bw, bh, ox, oy, entrance_side)
-    elif layout_type == "t_shape":
-        return _create_t_corridor(bw, bh, ox, oy, entrance_side)
-    elif layout_type == "short_corridor":
-        return _create_short_corridor(bw, bh, ox, oy, entrance_side)
-    elif layout_type == "open_plan":
-        return _create_open_plan_corridor(bw, bh, ox, oy, entrance_side)
-    else:
-        return _create_center_corridor(bw, bh, ox, oy, entrance_side)
-
-
-def _create_center_corridor(bw, bh, ox, oy, entrance_side):
-    """Klasik merkez koridor düzeni."""
-    corridor_w = 1.20
-
-    # Koridor pozisyonu: varyasyon için rastgele
-    corr_ratio = 0.35 + random.random() * 0.20
-    corr_x = ox + bw * corr_ratio
-
-    corridor = PlanRoom(
-        name="Koridor", room_type="koridor",
-        x=round(corr_x, 2), y=round(oy, 2),
-        width=round(corridor_w, 2), height=round(bh, 2),
-        has_exterior_wall=False,
-    )
-
-    left_w = corr_x - ox
-    right_w = bw - (corr_x - ox + corridor_w)
-    right_x = corr_x + corridor_w
-
-    zones = {
-        "corridor": {"x": corr_x, "y": oy, "w": corridor_w, "h": bh},
-        "left_front": {"x": ox, "y": oy, "w": left_w, "h": bh * 0.50,
-                       "remaining_area": left_w * bh * 0.50},
-        "left_back":  {"x": ox, "y": oy + bh * 0.50, "w": left_w,
-                       "h": bh * 0.50,
-                       "remaining_area": left_w * bh * 0.50},
-        "right_front": {"x": right_x, "y": oy, "w": right_w,
-                        "h": bh * 0.30,
-                        "remaining_area": right_w * bh * 0.30},
-        "right_mid":   {"x": right_x, "y": oy + bh * 0.30, "w": right_w,
-                        "h": bh * 0.25,
-                        "remaining_area": right_w * bh * 0.25},
-        "right_back":  {"x": right_x, "y": oy + bh * 0.55, "w": right_w,
-                        "h": bh * 0.45,
-                        "remaining_area": right_w * bh * 0.45},
-        "entrance":  {"x": corr_x - 1.2, "y": oy,
-                      "w": corridor_w + 1.2, "h": 2.2,
-                      "remaining_area": (corridor_w + 1.2) * 2.2},
-        "wet":       {"x": right_x, "y": oy + bh * 0.30, "w": right_w,
-                      "h": bh * 0.70,
-                      "remaining_area": right_w * bh * 0.70},
-    }
-
-    return corridor, zones
-
-
-def _create_l_corridor(bw, bh, ox, oy, entrance_side):
-    """L-şekilli koridor düzeni — koridorun köşede dönmesi."""
-    corridor_w = 1.20
-
-    # Dikey kol: üst yarıda
-    vert_x = ox + bw * (0.35 + random.random() * 0.15)
-    vert_y_start = oy + bh * 0.45
-    vert_h = bh * 0.55
-
-    # Yatay kol: ortadan sağa
-    horiz_y = vert_y_start
-    horiz_x_start = vert_x
-    horiz_w = ox + bw - vert_x
-
-    corridor = PlanRoom(
-        name="Koridor", room_type="koridor",
-        x=round(vert_x, 2), y=round(vert_y_start, 2),
-        width=round(corridor_w, 2), height=round(vert_h, 2),
-        has_exterior_wall=False,
-    )
-
-    # L-şekilli koridorun yatay kolu (ikinci PlanRoom olarak eklenmez,
-    # zone olarak kullanılır)
-    left_w = vert_x - ox
-    right_x = vert_x + corridor_w
-    right_w = bw - (vert_x - ox + corridor_w)
-
-    zones = {
-        "corridor": {"x": vert_x, "y": vert_y_start, "w": corridor_w,
-                     "h": vert_h},
-        "left_front": {"x": ox, "y": oy, "w": left_w, "h": bh * 0.45,
-                       "remaining_area": left_w * bh * 0.45},
-        "left_back":  {"x": ox, "y": oy + bh * 0.45, "w": left_w,
-                       "h": bh * 0.55,
-                       "remaining_area": left_w * bh * 0.55},
-        "right_front": {"x": right_x, "y": oy, "w": right_w,
-                        "h": bh * 0.45,
-                        "remaining_area": right_w * bh * 0.45},
-        "right_back":  {"x": right_x, "y": oy + bh * 0.55, "w": right_w,
-                        "h": bh * 0.45,
-                        "remaining_area": right_w * bh * 0.45},
-        "top_right": {"x": ox, "y": oy + bh * 0.80, "w": left_w,
-                      "h": bh * 0.20,
-                      "remaining_area": left_w * bh * 0.20},
-        "entrance": {"x": vert_x - 1.0, "y": oy + bh * 0.40,
-                     "w": corridor_w + 1.0, "h": 2.2,
-                     "remaining_area": (corridor_w + 1.0) * 2.2},
-        "wet": {"x": right_x, "y": oy + bh * 0.45, "w": right_w,
-                "h": bh * 0.55,
-                "remaining_area": right_w * bh * 0.55},
-    }
-
-    return corridor, zones
-
-
-def _create_t_corridor(bw, bh, ox, oy, entrance_side):
-    """T-şekilli koridor — ortada dikey, ortada yatay kol."""
-    corridor_w = 1.20
-
-    # Dikey kol
-    vert_x = ox + bw * 0.45 + random.random() * bw * 0.10
-    vert_h = bh
-
-    corridor = PlanRoom(
-        name="Koridor", room_type="koridor",
-        x=round(vert_x, 2), y=round(oy, 2),
-        width=round(corridor_w, 2), height=round(vert_h, 2),
-        has_exterior_wall=False,
-    )
-
-    left_w = vert_x - ox
-    right_x = vert_x + corridor_w
-    right_w = bw - (vert_x - ox + corridor_w)
-
-    # T'nin yatay kolu bölge olarak
-    t_cross_y = oy + bh * 0.50
-
-    zones = {
-        "corridor": {"x": vert_x, "y": oy, "w": corridor_w, "h": vert_h},
-        "left_front": {"x": ox, "y": oy, "w": left_w, "h": bh * 0.50,
-                       "remaining_area": left_w * bh * 0.50},
-        "left_back":  {"x": ox, "y": t_cross_y, "w": left_w,
-                       "h": bh * 0.50,
-                       "remaining_area": left_w * bh * 0.50},
-        "right_front": {"x": right_x, "y": oy, "w": right_w,
-                        "h": bh * 0.35,
-                        "remaining_area": right_w * bh * 0.35},
-        "right_mid":   {"x": right_x, "y": oy + bh * 0.35, "w": right_w,
-                        "h": bh * 0.30,
-                        "remaining_area": right_w * bh * 0.30},
-        "right_back":  {"x": right_x, "y": oy + bh * 0.65, "w": right_w,
-                        "h": bh * 0.35,
-                        "remaining_area": right_w * bh * 0.35},
-        "entrance": {"x": vert_x - 1.2, "y": oy, "w": corridor_w + 1.2,
-                     "h": 2.2,
-                     "remaining_area": (corridor_w + 1.2) * 2.2},
-        "wet": {"x": right_x, "y": oy + bh * 0.35, "w": right_w,
-                "h": bh * 0.65,
-                "remaining_area": right_w * bh * 0.65},
-    }
-
-    return corridor, zones
-
-
-def _create_short_corridor(bw, bh, ox, oy, entrance_side):
-    """Kısa koridor — kompakt düzen (1+1, 2+1 için ideal)."""
-    corridor_w = 1.10
-    corridor_h = bh * (0.35 + random.random() * 0.15)
-
-    corr_x = ox + bw * (0.38 + random.random() * 0.15)
-    corr_y = oy + (bh - corridor_h) * 0.5
-
-    corridor = PlanRoom(
-        name="Koridor", room_type="koridor",
-        x=round(corr_x, 2), y=round(corr_y, 2),
-        width=round(corridor_w, 2), height=round(corridor_h, 2),
-        has_exterior_wall=False,
-    )
-
-    left_w = corr_x - ox
-    right_x = corr_x + corridor_w
-    right_w = bw - (corr_x - ox + corridor_w)
-
-    zones = {
-        "corridor": {"x": corr_x, "y": corr_y, "w": corridor_w,
-                     "h": corridor_h},
-        "left_front": {"x": ox, "y": oy, "w": left_w, "h": bh * 0.55,
-                       "remaining_area": left_w * bh * 0.55},
-        "left_back":  {"x": ox, "y": oy + bh * 0.55, "w": left_w,
-                       "h": bh * 0.45,
-                       "remaining_area": left_w * bh * 0.45},
-        "right_front": {"x": right_x, "y": oy, "w": right_w,
-                        "h": bh * 0.50,
-                        "remaining_area": right_w * bh * 0.50},
-        "right_back":  {"x": right_x, "y": oy + bh * 0.50, "w": right_w,
-                        "h": bh * 0.50,
-                        "remaining_area": right_w * bh * 0.50},
-        "entrance": {"x": corr_x - 0.8, "y": oy, "w": corridor_w + 0.8,
-                     "h": 2.0,
-                     "remaining_area": (corridor_w + 0.8) * 2.0},
-        "wet": {"x": right_x, "y": oy + bh * 0.50, "w": right_w,
-                "h": bh * 0.50,
-                "remaining_area": right_w * bh * 0.50},
-    }
-
-    return corridor, zones
-
-
-def _create_open_plan_corridor(bw, bh, ox, oy, entrance_side):
-    """Açık plan düzeni — geniş salon alanı, kısa koridor."""
-    corridor_w = 1.10
-    corridor_h = bh * 0.55
-
-    corr_x = ox + bw * (0.55 + random.random() * 0.10)
-    corr_y = oy + bh * 0.45
-
-    corridor = PlanRoom(
-        name="Koridor", room_type="koridor",
-        x=round(corr_x, 2), y=round(corr_y, 2),
-        width=round(corridor_w, 2), height=round(corridor_h, 2),
-        has_exterior_wall=False,
-    )
-
-    left_w = corr_x - ox
-    right_x = corr_x + corridor_w
-    right_w = bw - (corr_x - ox + corridor_w)
-
-    zones = {
-        "corridor": {"x": corr_x, "y": corr_y, "w": corridor_w,
-                     "h": corridor_h},
-        # Salon + mutfak → büyük ön bölge
-        "left_front": {"x": ox, "y": oy, "w": left_w, "h": bh * 0.50,
-                       "remaining_area": left_w * bh * 0.50},
-        "left_back":  {"x": ox, "y": oy + bh * 0.50, "w": left_w,
-                       "h": bh * 0.50,
-                       "remaining_area": left_w * bh * 0.50},
-        "right_front": {"x": right_x, "y": oy, "w": right_w,
-                        "h": bh * 0.45,
-                        "remaining_area": right_w * bh * 0.45},
-        "right_back":  {"x": right_x, "y": oy + bh * 0.55, "w": right_w,
-                        "h": bh * 0.45,
-                        "remaining_area": right_w * bh * 0.45},
-        "entrance": {"x": corr_x - 1.0, "y": oy + bh * 0.40,
-                     "w": corridor_w + 1.0, "h": 2.0,
-                     "remaining_area": (corridor_w + 1.0) * 2.0},
-        "wet": {"x": right_x, "y": oy + bh * 0.45, "w": right_w,
-                "h": bh * 0.55,
-                "remaining_area": right_w * bh * 0.55},
-    }
-
-    return corridor, zones
-
-
-# ═══════════════════════════════════════════════════════════════
-# ODA YERLEŞTİRME
-# ═══════════════════════════════════════════════════════════════
-
-def _get_sun_zone(zones, sun_dir, entrance_side):
-    """Güneş yönüne göre en uygun bölgeyi döndürür."""
-    if sun_dir in ("south", "güney"):
-        return zones.get("left_front")
-    elif sun_dir in ("north", "kuzey"):
-        return zones.get("left_back")
-    elif sun_dir in ("west", "batı"):
-        return zones.get("left_front")
-    else:
-        return zones.get("left_front")
-
-
-def _place_rooms_in_zone(slots: list[RoomSlot], zone: dict, rooms: list,
-                          exterior_side: str = ""):
-    """Bir bölgeye birden fazla odayı sığdırarak yerleştirir."""
-    zx, zy = zone["x"], zone["y"]
-    zw, zh = zone["w"], zone["h"]
-
-    slots.sort(key=lambda s: s.target_area, reverse=True)
-
-    current_y = zy
-    current_x = zx
-    row_height = 0
-
-    for slot in slots:
-        if slot.placed:
-            continue
-
-        remaining_h = zy + zh - current_y
-        if remaining_h < slot.min_width:
-            continue
-
-        ideal_w, ideal_h = calculate_ideal_dimensions(slot.room_type,
-                                                       slot.target_area)
-
-        use_full_width = (ideal_w >= zw * 0.7) or (slot.target_area >= 20.0)
-
-        if not use_full_width:
-            room_w = min(ideal_w * 1.15, zw * 0.55)
-            room_w = max(slot.min_width, room_w)
-            room_h = slot.target_area / room_w
-            room_h = max(slot.min_width, room_h)
-
-            if current_x + room_w > zx + zw + 0.1:
-                current_y += row_height
-                current_x = zx
-                row_height = 0
-                remaining_h = zy + zh - current_y
-                if remaining_h < room_h:
-                    continue
-        else:
-            room_w = zw
-            room_h = slot.target_area / room_w if room_w > 0 else 3.0
-            room_h = max(slot.min_width, min(room_h, remaining_h))
-
-            if current_x > zx + 0.1:
-                current_y += row_height
-                current_x = zx
-                row_height = 0
-
-            remaining_h = zy + zh - current_y
-            room_h = min(room_h, remaining_h)
-
-        # En-boy oranı kontrolü
-        aspect = (min(room_w, room_h) / max(room_w, room_h)
-                  if max(room_w, room_h) > 0 else 0.5)
-        min_aspect = ROOM_ASPECT_RATIOS.get(slot.room_type, {}).get("min", 0.35)
-        if aspect < min_aspect and room_h < room_w:
-            room_h = max(room_h, room_w * min_aspect)
-            room_h = min(room_h, zy + zh - current_y)
-
-        slot.x = round(current_x, 2)
-        slot.y = round(current_y, 2)
-        slot.width = round(room_w, 2)
-        slot.height = round(room_h, 2)
-        slot.placed = True
-
-        rooms.append(PlanRoom(
-            name=slot.name, room_type=slot.room_type,
-            x=slot.x, y=slot.y,
-            width=slot.width, height=slot.height,
-            has_exterior_wall=exterior_side != "none",
-            facing_direction=exterior_side if exterior_side != "none" else "",
-        ))
-
-        if not use_full_width:
-            current_x += room_w
-            row_height = max(row_height, room_h)
-        else:
-            current_y += room_h
-            current_x = zx
-            row_height = 0
-
-    zone["remaining_area"] = max(0, zw * (zy + zh - current_y - row_height))
-
-
-def _place_single_room(slot: RoomSlot, zone: dict, rooms: list):
-    """Tek bir odayı bölgeye yerleştirir."""
-    _place_rooms_in_zone([slot], zone, rooms, exterior_side="")
-
-
-def _find_best_zone(slot: RoomSlot, zones: list[dict]) -> dict | None:
-    """Oda için en uygun bölgeyi seçer."""
-    if not zones:
-        return None
-
-    valid = [z for z in zones
-             if z.get("remaining_area", z["w"] * z["h"]) >= slot.target_area * 0.7]
-    if not valid:
-        valid = [z for z in zones
-                 if z.get("remaining_area", z["w"] * z["h"]) > 3]
-
-    if not valid:
-        return zones[0] if zones else None
-
-    if slot.priority <= 3:
-        valid.sort(key=lambda z: z.get("remaining_area", 0), reverse=True)
-    else:
-        valid.sort(key=lambda z: abs(z.get("remaining_area", 0) - slot.target_area))
-
-    return valid[0]
-
-
-def _force_place_remaining(unplaced: list[RoomSlot], rooms: list,
-                            bw, bh, ox, oy):
-    """Yerleştirilmemiş odaları boş alanlara zorla yerleştirir."""
-    occupied = set()
-    grid_size = 0.5
-    for r in rooms:
-        for gx in range(int(r.x / grid_size),
-                        int((r.x + r.width) / grid_size) + 1):
-            for gy in range(int(r.y / grid_size),
-                            int((r.y + r.height) / grid_size) + 1):
-                occupied.add((gx, gy))
-
-    for slot in unplaced:
-        if slot.placed:
-            continue
-
-        best_pos = None
-        best_score = -1
-
-        for gx in range(int(ox / grid_size), int((ox + bw) / grid_size)):
-            for gy in range(int(oy / grid_size), int((oy + bh) / grid_size)):
-                if (gx, gy) in occupied:
-                    continue
-
-                x = gx * grid_size
-                y = gy * grid_size
-                w = min(math.sqrt(slot.target_area * 1.3), ox + bw - x)
-                h = slot.target_area / max(w, 1)
-
-                if w < slot.min_width or h < slot.min_width:
-                    continue
-                if x + w > ox + bw or y + h > oy + bh:
-                    continue
-
-                overlap = False
-                for r in rooms:
-                    if (x < r.x + r.width and x + w > r.x and
-                            y < r.y + r.height and y + h > r.y):
-                        overlap = True
-                        break
-
-                if not overlap:
-                    score = 0
-                    for r in rooms:
-                        if (abs(x + w - r.x) < 0.1
-                                or abs(x - (r.x + r.width)) < 0.1):
-                            if y < r.y + r.height and y + h > r.y:
-                                score += 10
-                        if (abs(y + h - r.y) < 0.1
-                                or abs(y - (r.y + r.height)) < 0.1):
-                            if x < r.x + r.width and x + w > r.x:
-                                score += 10
-
-                    if score > best_score:
-                        best_score = score
-                        best_pos = (x, y, w, h)
-
-        if best_pos:
-            x, y, w, h = best_pos
-            slot.x, slot.y, slot.width, slot.height = x, y, w, h
-            slot.placed = True
-            rooms.append(PlanRoom(
-                name=slot.name, room_type=slot.room_type,
-                x=round(x, 2), y=round(y, 2),
-                width=round(w, 2), height=round(h, 2),
-                has_exterior_wall=False,
-            ))
-
-
-# ═══════════════════════════════════════════════════════════════
-# KAPI VE PENCERE EKLEME
-# ═══════════════════════════════════════════════════════════════
-
-def _convert_to_plan_rooms(rooms, bw, bh, ox, oy, sun_dir, entrance_side,
-                            en_suite=False):
-    """Oda listesini son hale getirir — kapı ve pencere ekler."""
-    result = []
-
-    for room in rooms:
-        if isinstance(room, PlanRoom):
-            r = room
-        else:
-            continue
-
-        # ── Dış duvar tespiti ──
-        is_left = abs(r.x - ox) < 0.3
-        is_right = abs(r.x + r.width - (ox + bw)) < 0.3
-        is_bottom = abs(r.y - oy) < 0.3
-        is_top = abs(r.y + r.height - (oy + bh)) < 0.3
-        r.has_exterior_wall = is_left or is_right or is_bottom or is_top
-
-        if is_bottom:
-            r.facing_direction = "south"
-        elif is_top:
-            r.facing_direction = "north"
-        elif is_left:
-            r.facing_direction = "west"
-        elif is_right:
-            r.facing_direction = "east"
-
-        # ── Pencereler ──
-        r.windows = []
-        if r.has_exterior_wall and r.room_type not in ("koridor", "antre"):
-            if is_bottom:
-                r.windows.append({"wall": "south", "position": 0.5,
-                                  "width": min(1.6, r.width * 0.4)})
-            elif is_top:
-                r.windows.append({"wall": "north", "position": 0.5,
-                                  "width": min(1.6, r.width * 0.4)})
-            elif is_left:
-                r.windows.append({"wall": "west", "position": 0.5,
-                                  "width": min(1.4, r.height * 0.35)})
-            elif is_right:
-                r.windows.append({"wall": "east", "position": 0.5,
-                                  "width": min(1.4, r.height * 0.35)})
-
-            # Salon → 2 pencere
-            if r.room_type == "salon" and r.area > 20 and len(r.windows) > 0:
-                w = r.windows[0]
-                r.windows = [
-                    {**w, "position": 0.3,
-                     "width": min(1.4, r.width * 0.25)},
-                    {**w, "position": 0.7,
-                     "width": min(1.4, r.width * 0.25)},
-                ]
-
-            # İki dış duvara bakan odalar → ek pencere
-            ext_walls = []
-            if is_left:
-                ext_walls.append("west")
-            if is_right:
-                ext_walls.append("east")
-            if is_bottom:
-                ext_walls.append("south")
-            if is_top:
-                ext_walls.append("north")
-            if len(ext_walls) > 1 and r.room_type in ("salon", "yatak_odasi"):
-                for ew in ext_walls[1:]:
-                    dim = r.height if ew in ("west", "east") else r.width
-                    r.windows.append({"wall": ew, "position": 0.5,
-                                      "width": min(1.2, dim * 0.3)})
-
-        # ── Kapılar ──
-        r.doors = []
-        # Koridora bakan duvardan kapı
-        for other in rooms:
-            if other is r or not isinstance(other, PlanRoom):
-                continue
-            if other.room_type != "koridor" and r.room_type != "koridor":
-                continue
-
-            # Yatay bitişiklik
-            if (abs(r.x + r.width - other.x) < 0.3
-                    or abs(other.x + other.width - r.x) < 0.3):
-                overlap_y = (min(r.y + r.height, other.y + other.height)
-                             - max(r.y, other.y))
-                if overlap_y > 0.9:
-                    wall = ("east" if r.x + r.width <= other.x + 0.3
-                            else "west")
-                    rel_pos = ((max(r.y, other.y) + 0.5 - r.y) / r.height
-                               if r.height > 0 else 0.3)
-                    r.doors.append({
-                        "wall": wall,
-                        "position": max(0.15, min(0.85, rel_pos)),
-                        "width": 0.90,
-                    })
-                    break
-
-            # Dikey bitişiklik
-            if (abs(r.y + r.height - other.y) < 0.3
-                    or abs(other.y + other.height - r.y) < 0.3):
-                overlap_x = (min(r.x + r.width, other.x + other.width)
-                             - max(r.x, other.x))
-                if overlap_x > 0.9:
-                    wall = ("north" if r.y + r.height <= other.y + 0.3
-                            else "south")
-                    rel_pos = ((max(r.x, other.x) + 0.5 - r.x) / r.width
-                               if r.width > 0 else 0.3)
-                    r.doors.append({
-                        "wall": wall,
-                        "position": max(0.15, min(0.85, rel_pos)),
-                        "width": 0.90,
-                    })
-                    break
-
-        # En-suite banyo → yatak odasına kapı
-        if en_suite and "ebeveyn" in r.name.lower():
-            for other in rooms:
-                if not isinstance(other, PlanRoom):
-                    continue
-                if "Yatak" in other.name and ("1" in other.name
-                                               or "Ebeveyn" in other.name):
-                    if (abs(r.y - (other.y + other.height)) < 0.3
-                            or abs(other.y - (r.y + r.height)) < 0.3):
-                        wall = ("south" if r.y > other.y else "north")
-                        r.doors.append({"wall": wall, "position": 0.5,
-                                        "width": 0.80})
-                        break
-
-        # Kapısı olmayan odalar → en yakın odaya kapı
-        if not r.doors and r.room_type != "koridor":
-            r.doors.append({"wall": "north", "position": 0.2, "width": 0.90})
-
-        result.append(r)
-
-    return result
 
 
 # ═══════════════════════════════════════════════════════════════

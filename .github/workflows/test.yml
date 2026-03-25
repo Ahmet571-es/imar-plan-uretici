@@ -1,0 +1,40 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main, master, "claude/**"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 3.11 kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Sistem bağımlılıklarını kur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgeos-dev libspatialindex-dev fonts-dejavu-core
+
+      - name: Python bağımlılıklarını kur
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Syntax kontrolü
+        run: |
+          python -m py_compile app.py
+          python -m py_compile core/floor_plan_generator.py
+          python -m py_compile core/zoning.py
+
+      - name: Testleri çalıştır
+        run: |
+          python -m pytest tests/ -v --tb=short

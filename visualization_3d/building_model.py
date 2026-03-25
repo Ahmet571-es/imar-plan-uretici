@@ -42,6 +42,33 @@ GROUND_COLOR = "rgba(120,180,100,0.3)"
 BALCONY_COLOR = "rgba(200,200,200,0.6)"
 STAIR_COLOR = "rgba(160,120,80,0.7)"
 
+# ── Oda tipi renk haritası — tekil kat görünümünde kullanılır ──
+ODA_TIPI_RENKLERI = {
+    "salon":     "rgba(66,133,244,0.35)",    # Mavi
+    "yatak":     "rgba(255,152,0,0.35)",      # Turuncu
+    "mutfak":    "rgba(76,175,80,0.35)",      # Yeşil
+    "banyo":     "rgba(0,188,212,0.35)",       # Camgöbeği
+    "wc":        "rgba(0,188,212,0.25)",       # Açık camgöbeği
+    "balkon":    "rgba(156,204,101,0.30)",     # Açık yeşil
+    "koridor":   "rgba(189,189,189,0.25)",     # Gri
+    "antre":     "rgba(161,136,127,0.30)",     # Kahverengi
+    "merdiven":  "rgba(121,85,72,0.35)",       # Koyu kahve
+    "oda":       "rgba(255,183,77,0.35)",      # Açık turuncu
+    "default":   "rgba(200,200,200,0.30)",     # Varsayılan gri
+}
+
+ODA_TIPI_LEGEND_RENKLERI = {
+    "salon":     "#4285F4",
+    "yatak":     "#FF9800",
+    "mutfak":    "#4CAF50",
+    "banyo":     "#00BCD4",
+    "wc":        "#00ACC1",
+    "balkon":    "#9CCC65",
+    "koridor":   "#BDBDBD",
+    "antre":     "#A1887F",
+    "merdiven":  "#795548",
+}
+
 
 def build_3d_model(
     plans: list[FloorPlan],
@@ -396,5 +423,124 @@ def build_dual_apartment_3d(dual_plan: dict, kat_sayisi: int = 4,
         showlegend=False,
         margin=dict(l=0, r=0, t=40, b=0),
         height=700,
+    )
+    return fig
+
+
+def _get_room_color(room_type: str) -> str:
+    """Oda tipine göre renk döndürür."""
+    for key, color in ODA_TIPI_RENKLERI.items():
+        if key in room_type.lower():
+            return color
+    return ODA_TIPI_RENKLERI["default"]
+
+
+def build_single_floor_model(
+    plan: "FloorPlan",
+    kat_no: int = 1,
+    parsel_coords: list[tuple[float, float]] | None = None,
+    show_labels: bool = True,
+    show_legend: bool = True,
+) -> go.Figure:
+    """Tek kat detaylı 3D modeli — oda tipi renkleri, etiketler ve isteğe bağlı parsel sınırı.
+
+    Args:
+        plan: Kat planı (FloorPlan nesnesi).
+        kat_no: Gösterilecek kat numarası (1-tabanlı).
+        parsel_coords: Parsel köşe koordinatları [(x, y), ...]. Verilirse zemin düzlemi çizilir.
+        show_labels: Oda isim etiketlerini göster.
+        show_legend: Renk açıklama (legend) göster.
+
+    Returns:
+        Plotly Figure nesnesi.
+    """
+    fig = go.Figure()
+    z_base = 0.0
+
+    # Döşeme plağı
+    _add_floor_slab(fig, plan, z_base, kat_no)
+
+    # Kullanılan oda tipleri — legend için
+    used_types: dict[str, str] = {}
+
+    for room in plan.rooms:
+        room_color = _get_room_color(room.room_type)
+        _add_room_walls(fig, room, z_base, kat_no, apt_color=room_color)
+
+        # Oda tipi kaydı (legend için)
+        rt_key = room.room_type.lower()
+        for key in ODA_TIPI_LEGEND_RENKLERI:
+            if key in rt_key:
+                used_types[key] = ODA_TIPI_LEGEND_RENKLERI[key]
+                break
+
+        for window in room.windows:
+            _add_window_3d(fig, room, window, z_base)
+        for door in room.doors:
+            _add_door_3d(fig, room, door, z_base)
+        if room.room_type == "balkon":
+            _add_balcony_3d(fig, room, z_base)
+        if room.room_type == "merdiven":
+            _add_staircase_3d(fig, room, z_base, kat_no)
+
+        # Oda etiketi — oda merkezine 3D metin
+        if show_labels:
+            cx, cy = room.center
+            label_z = z_base + DOSEME_KALINLIK + IC_YUKSEKLIK * 0.5
+            fig.add_trace(go.Scatter3d(
+                x=[cx], y=[cy], z=[label_z],
+                mode="text",
+                text=[f"{room.name}<br>{room.area:.1f}m²"],
+                textfont=dict(size=9, color="#333"),
+                hoverinfo="text",
+                hovertext=f"{room.name} ({room.room_type}): {room.width:.1f}x{room.height:.1f}m = {room.area:.1f}m²",
+                showlegend=False,
+            ))
+
+    # Parsel sınırı ve zemin düzlemi
+    if parsel_coords and len(parsel_coords) >= 3:
+        _add_ground(fig, parsel_coords)
+        # Parsel sınır çizgisi
+        px = [c[0] for c in parsel_coords] + [parsel_coords[0][0]]
+        py = [c[1] for c in parsel_coords] + [parsel_coords[0][1]]
+        fig.add_trace(go.Scatter3d(
+            x=px, y=py, z=[0.0] * len(px),
+            mode="lines",
+            line=dict(color="rgba(255,87,34,0.8)", width=4),
+            name="Parsel Siniri",
+            hoverinfo="name",
+            showlegend=show_legend,
+        ))
+
+    # Renk açıklama (legend) — her oda tipi için görünmez nokta
+    if show_legend and used_types:
+        for tip, renk in used_types.items():
+            fig.add_trace(go.Scatter3d(
+                x=[None], y=[None], z=[None],
+                mode="markers",
+                marker=dict(size=10, color=renk, symbol="square"),
+                name=tip.capitalize(),
+                showlegend=True,
+            ))
+
+    fig.update_layout(
+        scene=dict(
+            xaxis_title="X (m)", yaxis_title="Y (m)", zaxis_title="Z (m)",
+            aspectmode="data",
+            camera=dict(
+                eye=dict(x=0.8, y=-0.8, z=1.2),
+                up=dict(x=0, y=0, z=1),
+            ),
+        ),
+        title=dict(text=f"Kat {kat_no} — Detayli Gorunum",
+                   font=dict(size=16)),
+        showlegend=show_legend,
+        legend=dict(
+            yanchor="top", y=0.95, xanchor="left", x=0.01,
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor="#ccc", borderwidth=1,
+        ),
+        margin=dict(l=0, r=0, t=40, b=0),
+        height=650,
     )
     return fig

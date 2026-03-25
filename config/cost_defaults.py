@@ -69,6 +69,14 @@ def get_construction_cost(il: str, kalite: str = "orta") -> float:
     return il_data.get(kalite, il_data["orta"])
 
 
+# Önbellek: IL_INSAAT_MALIYETI sözlüğü modül yüklendiğinde bir kez oluşturulur,
+# get_iller() her çağrıda yeni bir list döndürür ancak kaynak sabit/statiktir.
+_ILLER_CACHE: list[str] | None = None
+
+
 def get_iller() -> list[str]:
-    """Tanımlı il listesini döndürür."""
-    return list(IL_INSAAT_MALIYETI.keys())
+    """Tanımlı il listesini döndürür (önbellekli)."""
+    global _ILLER_CACHE
+    if _ILLER_CACHE is None:
+        _ILLER_CACHE = list(IL_INSAAT_MALIYETI.keys())
+    return _ILLER_CACHE
