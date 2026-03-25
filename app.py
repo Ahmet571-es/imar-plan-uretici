@@ -168,7 +168,7 @@ with st.sidebar:
         "6_plan":         "📋 [6] Kat Planı Üretimi",
         "7_ai":           "🤖 [7] AI İyileştirme & Tefriş",
         "8_3d":           "🏗️ [8] 3D Görselleştirme",
-        "9_render":       "🎨 [9] Fotogerçekçi Render",
+        "9_render":       "🎨 [9] AI Render (Grok Imagine)",
     }
     for key, label in sayfa_secenekleri.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True,
@@ -274,7 +274,7 @@ with st.sidebar:
         else:
             st.caption("Grok API key girilmedi")
 
-    st.caption("v1.1 — FAZ 1-7 + Ajan Sistemi + UX")
+    st.caption("v1.2 — Grok Imagine 1.0 Entegrasyonu")
 
     # ── Otomatik Kaydetme Durumu ──
     has_data = st.session_state.get("parsel") is not None or st.session_state.get("imar") is not None

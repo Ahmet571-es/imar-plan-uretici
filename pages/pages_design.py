@@ -205,8 +205,22 @@ def sayfa_ai_tefris():
 
 
 def sayfa_3d():
-    """Sayfa 8 — 3D Görselleştirme."""
+    """Sayfa 8 — 3D Görselleştirme + Grok Imagine Fotorealistik Render.
+
+    Özellikler:
+    - Plotly 3D interaktif model
+    - Rota A: Plotly kamera açısını okuyup prompt'a aktarma
+    - Rota D: 6 farklı kamera açısından otomatik render paketi
+    - Tekli render (mevcut açıdan)
+    - Multi-turn düzenleme
+    - Race condition koruması
+    """
     from visualization_3d.building_model import build_3d_model
+    from visualization_3d.plotly_capture import capture_plotly_to_bytes, is_kaleido_available
+    from visualization_3d.camera_mapping import (
+        get_plotly_camera_eye, plotly_camera_to_prompt, set_plotly_camera,
+        PRESET_CAMERAS,
+    )
 
     st.header("🏗️ 3D Görselleştirme")
 
@@ -217,9 +231,10 @@ def sayfa_3d():
     parsel = st.session_state.get("parsel")
 
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce bir kat planı üretin ve seçin.")
+        st.warning("Önce bir kat planı üretin ve seçin.")
         return
 
+    # ── 3D Model Kontrolleri ──
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         kat = st.number_input("Kat Sayısı", 1, 20, imar.kat_adedi if imar else 4, key="3d_kat")
@@ -229,6 +244,25 @@ def sayfa_3d():
         exploded = st.checkbox("Patlak Görünüm", key="3d_explode")
     with col4:
         sel_floor = st.selectbox("Kat Filtre", ["Tümü"] + [f"Kat {i+1}" for i in range(kat)], key="3d_floor")
+
+    # ── Kamera açısı seçimi (Rota A) ──
+    st.caption("Kamera açısını seçin — Plotly modeli ve AI render bu açıdan üretilir")
+    cam_col1, cam_col2 = st.columns([3, 1])
+    with cam_col1:
+        preset_options = {k: v["isim"] for k, v in PRESET_CAMERAS.items()}
+        preset_options["custom"] = "Özel (Plotly varsayılan)"
+        secili_kamera = st.selectbox(
+            "Kamera Açısı",
+            list(preset_options.keys()),
+            format_func=lambda x: preset_options[x],
+            index=1,  # corner_elevated varsayılan
+            key="3d_camera_preset",
+        )
+    with cam_col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if secili_kamera != "custom":
+            cam_info = PRESET_CAMERAS[secili_kamera]
+            st.caption(f"eye: ({cam_info['eye']['x']:.1f}, {cam_info['eye']['y']:.1f}, {cam_info['eye']['z']:.1f})")
 
     selected_floor = None if sel_floor == "Tümü" else int(sel_floor.split()[-1]) - 1
     parsel_coords = list(parsel.polygon.exterior.coords) if parsel else None
@@ -241,54 +275,864 @@ def sayfa_3d():
         exploded=exploded,
         selected_floor=selected_floor,
     )
-    st.plotly_chart(fig, use_container_width=True)
+
+    # Seçilen kamera açısını uygula
+    if secili_kamera != "custom" and secili_kamera in PRESET_CAMERAS:
+        set_plotly_camera(fig, PRESET_CAMERAS[secili_kamera]["eye"])
+
+    st.plotly_chart(fig, use_container_width=True, key="chart_3d_main")
+
+    # ── Kamera açısını oku ve prompt'a çevir (Rota A) ──
+    current_eye = get_plotly_camera_eye(fig)
+    camera_prompt = plotly_camera_to_prompt(current_eye["x"], current_eye["y"], current_eye["z"])
+
+    # ── Fotorealistik AI Render Bölümü ──
+    st.markdown("---")
+    st.subheader("Fotorealistik AI Render")
+
+    grok_key = st.session_state.get("grok_api_key", "")
+    from prompts.style_configs import STYLE_VARIANTS
+
+    # Bina boyutları
+    hesap = st.session_state.get("hesaplama")
+    if hesap and hesap.cekme_polygonu:
+        from utils.geometry_helpers import polygon_bounds_boyutlar
+        taban_en, taban_boy = polygon_bounds_boyutlar(hesap.cekme_polygonu)
+    else:
+        taban_en, taban_boy = 20.0, 15.0
+
+    bina_prog = st.session_state.get("bina_programi")
+    if bina_prog and bina_prog.katlar and bina_prog.katlar[0].daireler:
+        d0 = bina_prog.katlar[0].daireler[0]
+        daire_tipi = d0.tip
+        daire_alan = d0.brut_m2
+        daire_per_kat = len(bina_prog.katlar[0].daireler)
+    else:
+        daire_tipi, daire_alan, daire_per_kat = "3+1", 120.0, 2
+
+    # Stil ve kalite seçimi
+    from ai.grok_imagine import IMAGE_MODELS
+    render_col1, render_col2, render_col3 = st.columns(3)
+    with render_col1:
+        ai_stil = st.selectbox(
+            "Mimari Stil",
+            list(STYLE_VARIANTS.keys()),
+            format_func=lambda x: STYLE_VARIANTS[x]["isim"],
+            key="3d_ai_stil",
+        )
+    with render_col2:
+        sehir = st.text_input("Şehir", "İstanbul", key="3d_sehir")
+    with render_col3:
+        ai_quality = st.selectbox(
+            "Görsel Kalitesi",
+            list(IMAGE_MODELS.keys()),
+            format_func=lambda x: IMAGE_MODELS[x]["isim"],
+            index=0,
+            key="3d_ai_quality",
+        )
+
+    ek_prompt = st.text_input(
+        "Ek talimat (opsiyonel)",
+        placeholder="Örn: Cam cephe ekle, çevrede ağaçlar olsun...",
+        key="3d_ek_prompt",
+    )
+
+    is_processing = st.session_state.get("_3d_render_processing", False)
+
+    # ── 3 render modu ──
+    render_mode = st.radio(
+        "Render Modu",
+        ["Bu Açıdan Tekli Render", "6 Açıdan Render Paketi", "Ekran Görüntüsünden Render"],
+        horizontal=True,
+        key="3d_render_mode",
+    )
+
+    if render_mode == "Bu Açıdan Tekli Render":
+        # ── Rota A: Mevcut kamera açısından tekli render ──
+        st.info(f"Kamera açısı: {camera_prompt[:80]}...")
+
+        if st.button("Bu Açıdan AI Render Oluştur", type="primary", key="btn_3d_single", disabled=is_processing):
+            if not grok_key:
+                st.warning("Sidebar'dan Grok/xAI API Key girin.")
+            else:
+                st.session_state["_3d_render_processing"] = True
+                try:
+                    from prompts.exterior_prompts import build_exterior_prompt
+                    from ai.grok_imagine import generate_image
+
+                    # Kamera açısı prompt'tan
+                    if secili_kamera != "custom" and secili_kamera in PRESET_CAMERAS:
+                        kamera_prompt = PRESET_CAMERAS[secili_kamera]["prompt"]
+                        aydinlatma = PRESET_CAMERAS[secili_kamera].get(
+                            "aydinlatma_override", "Golden hour warm sunset"
+                        )
+                        aspect = PRESET_CAMERAS[secili_kamera].get("aspect_ratio", "16:9")
+                    else:
+                        kamera_prompt = camera_prompt
+                        aydinlatma = "Golden hour warm sunset"
+                        aspect = "16:9"
+
+                    prompt = build_exterior_prompt(
+                        kat_sayisi=kat,
+                        taban_en=taban_en,
+                        taban_boy=taban_boy,
+                        daire_sayisi_per_kat=daire_per_kat,
+                        daire_tipi=daire_tipi,
+                        daire_alan=daire_alan,
+                        mimari_stil_key=ai_stil,
+                        sehir=sehir,
+                        kamera_acisi=kamera_prompt,
+                        aydinlatma=aydinlatma,
+                    )
+                    if ek_prompt:
+                        prompt += f"\nAdditional requirements: {ek_prompt}"
+
+                    with st.spinner("Grok Imagine fotorealistik render üretiyor..."):
+                        result = generate_image(
+                            prompt=prompt,
+                            api_key=grok_key,
+                            aspect_ratio=aspect,
+                            render_type="3d_single_angle",
+                            style=STYLE_VARIANTS[ai_stil]["isim"],
+                            quality=ai_quality,
+                        )
+
+                    _handle_3d_render_result(result, STYLE_VARIANTS[ai_stil]["isim"])
+                finally:
+                    st.session_state["_3d_render_processing"] = False
+
+    elif render_mode == "6 Açıdan Render Paketi":
+        # ── Rota D: 6 farklı açıdan render paketi ──
+        st.info("6 farklı kamera açısından fotorealistik render üretilecek: "
+                "Ön cephe, köşe perspektif, yan cephe, kuşbakışı, arka bahçe, gece görünümü")
+
+        if st.button("6 Açıdan Render Paketi Oluştur", type="primary", key="btn_3d_6angle", disabled=is_processing):
+            if not grok_key:
+                st.warning("Sidebar'dan Grok/xAI API Key girin.")
+            else:
+                st.session_state["_3d_render_processing"] = True
+                try:
+                    from ai.grok_imagine import generate_6_angle_pack
+
+                    progress = st.progress(0, "Render paketi başlatılıyor...")
+
+                    def update_progress(idx, total, name):
+                        progress.progress((idx) / total, f"{name} render ediliyor... ({idx + 1}/{total})")
+
+                    results = generate_6_angle_pack(
+                        api_key=grok_key,
+                        kat_sayisi=kat,
+                        taban_en=taban_en,
+                        taban_boy=taban_boy,
+                        daire_sayisi_per_kat=daire_per_kat,
+                        daire_tipi=daire_tipi,
+                        daire_alan=daire_alan,
+                        mimari_stil_key=ai_stil,
+                        sehir=sehir,
+                        ek_prompt=ek_prompt,
+                        progress_callback=update_progress,
+                        quality=ai_quality,
+                    )
+
+                    progress.progress(1.0, "Tamamlandı!")
+
+                    # Sonuçları göster — 2x3 grid
+                    st.session_state["6_angle_results"] = results
+                    success_count = sum(1 for r in results if r.success)
+                    st.success(f"6 açıdan {success_count} render tamamlandı!")
+
+                    _display_6_angle_grid(results)
+
+                finally:
+                    st.session_state["_3d_render_processing"] = False
+
+    else:
+        # ── Ekran görüntüsünden render ──
+        uploaded = st.file_uploader(
+            "3D modelin ekran görüntüsünü yükleyin",
+            type=["png", "jpg", "jpeg"],
+            key="3d_screenshot_upload",
+        )
+        if uploaded is not None:
+            img_bytes = uploaded.read()
+            st.image(img_bytes, caption="Yüklenen 3D görüntü", use_container_width=True)
+
+            if st.button("Yüklenen Görüntüden AI Render Oluştur", type="primary", key="btn_3d_upload", disabled=is_processing):
+                if not grok_key:
+                    st.warning("Sidebar'dan Grok/xAI API Key girin.")
+                else:
+                    st.session_state["_3d_render_processing"] = True
+                    try:
+                        from ai.grok_imagine import render_3d_to_photorealistic
+                        with st.spinner("Fotorealistik render üretiliyor..."):
+                            result = render_3d_to_photorealistic(
+                                captured_image_bytes=img_bytes,
+                                api_key=grok_key,
+                                kat_sayisi=kat,
+                                taban_en=taban_en,
+                                taban_boy=taban_boy,
+                                mimari_stil_key=ai_stil,
+                                ek_prompt=ek_prompt,
+                                quality=ai_quality,
+                            )
+                        _handle_3d_render_result(result, STYLE_VARIANTS.get(ai_stil, {}).get("isim", ""))
+                    finally:
+                        st.session_state["_3d_render_processing"] = False
+
+    # ── Daha önce üretilmiş 6 açı paketi varsa göster ──
+    if st.session_state.get("6_angle_results") and render_mode != "6 Açıdan Render Paketi":
+        with st.expander("Son 6 Açı Render Paketi", expanded=False):
+            _display_6_angle_grid(st.session_state["6_angle_results"])
+
+    # ── Son tekli render sonucu ve düzenleme ──
+    if st.session_state.get("3d_render_result"):
+        result_data = st.session_state["3d_render_result"]
+        st.markdown("---")
+        st.subheader("Son Render Sonucu")
+
+        if result_data.get("image_data_b64"):
+            from utils.image_utils import base64_to_image_bytes
+            img = base64_to_image_bytes(result_data["image_data_b64"])
+            if img:
+                st.image(img, use_container_width=True)
+
+                method = result_data.get("metadata", {}).get("method", "")
+                if method:
+                    st.caption(f"Yöntem: {method}")
+
+                edit_text = st.text_input(
+                    "Render'ı düzenle",
+                    placeholder="Örn: Cephe rengini beyaz yap, daha fazla yeşillik ekle...",
+                    key="3d_render_edit",
+                )
+                if st.button("Düzenle", key="btn_3d_edit") and edit_text and grok_key:
+                    from ai.grok_imagine import edit_image
+                    with st.spinner("Düzenleme uygulanıyor..."):
+                        edit_result = edit_image(
+                            image_url=result_data.get("url", ""),
+                            edit_prompt=edit_text,
+                            api_key=grok_key,
+                            image_base64=result_data["image_data_b64"] if not result_data.get("url") else "",
+                        )
+                    if edit_result.success and (edit_result.image_data or edit_result.image_url):
+                        img_show = edit_result.image_data if edit_result.image_data else edit_result.image_url
+                        st.image(img_show, use_container_width=True)
+                        st.success("Düzenleme tamamlandı!")
+                        st.session_state["3d_render_result"] = edit_result.to_dict()
+                        _save_render_to_history(edit_result)
+                    else:
+                        st.error(f"Düzenleme hatası: {edit_result.error}")
+
+
+def _display_6_angle_grid(results):
+    """6 açı render sonuçlarını 2x3 grid olarak gösterir."""
+    from utils.image_utils import base64_to_image_bytes
+
+    rows = [results[i:i + 3] for i in range(0, len(results), 3)]
+    for row in rows:
+        cols = st.columns(3)
+        for j, res in enumerate(row):
+            with cols[j]:
+                if res.success and res.image_data:
+                    st.image(res.image_data, use_container_width=True)
+                    st.caption(res.style)
+                    _save_render_to_history(res)
+                elif res.success and res.image_url:
+                    st.image(res.image_url, use_container_width=True)
+                    st.caption(res.style)
+                    _save_render_to_history(res)
+                else:
+                    st.error(f"{res.style}: {res.error}")
+
+
+def _handle_3d_render_result(result, style_name: str):
+    """3D render sonucunu UI'da gösterir ve session state'e kaydeder."""
+    from utils.image_utils import image_bytes_to_base64
+
+    if result.success and (result.image_data or result.image_url):
+        img_show = result.image_data if result.image_data else result.image_url
+        st.image(img_show, use_container_width=True)
+        st.success("Fotorealistik render tamamlandı!")
+
+        render_data = result.to_dict()
+        render_data["render_type"] = "3d_to_photorealistic"
+        render_data["style"] = style_name
+        st.session_state["3d_render_result"] = render_data
+
+        result.render_type = "3d_to_photorealistic"
+        result.style = style_name
+        _save_render_to_history(result)
+    else:
+        st.error(f"Render hatası: {result.error}")
 
 
 def sayfa_render():
-    """Sayfa 9 — Fotogerçekçi Render."""
-    from ai.render_generator import RENDER_STYLES
+    """Sayfa 9 — Grok Imagine 1.0 ile Fotorealistik AI Render.
 
-    st.header("🎨 Fotogerçekçi İç Mekan Render")
+    6 Özellik:
+    1. Fotorealistik Dış Cephe Render
+    2. İç Mekan Daire Planı Görselleştirme
+    3. Çoklu Mimari Stil Alternatifleri (4 stil karşılaştırma)
+    4. Arazi ve Çevre Konteksti (Site Planı)
+    5. Multi-Turn İteratif Düzenleme
+    6. Karşılaştırmalı Galeri ve PDF Rapor
+    """
+    from ai.grok_imagine import generate_image, edit_image, generate_style_comparison, ImageResult
+    from prompts.exterior_prompts import build_exterior_prompt
+    from prompts.interior_prompts import build_interior_prompt, ROOM_TYPE_DETAILS
+    from prompts.site_plan_prompts import build_site_plan_prompt
+    from prompts.style_configs import (
+        STYLE_VARIANTS, CAMERA_ANGLES, LIGHTING_OPTIONS,
+        BALCONY_TYPES, BALCONY_PROMPTS, OTOPARK_OPTIONS,
+        PEYZAJ_OPTIONS,
+    )
+    from utils.image_utils import image_bytes_to_base64, base64_to_image_bytes
 
+    st.header("🎨 Grok Imagine — Fotorealistik AI Render")
+
+    # ── Session state başlangıç ──
+    if "render_history" not in st.session_state:
+        st.session_state.render_history = []
+    if "last_render" not in st.session_state:
+        st.session_state.last_render = None
+
+    grok_key = st.session_state.get("grok_api_key", "")
+    if not grok_key:
+        st.warning("Sidebar'dan Grok/xAI API Key girin. Render'lar API key olmadan prompt önizleme modunda çalışır.")
+
+    # Görsel kalitesi seçimi (tüm render modları için ortak)
+    from ai.grok_imagine import IMAGE_MODELS
+    render_quality = st.selectbox(
+        "Görsel Kalitesi",
+        list(IMAGE_MODELS.keys()),
+        format_func=lambda x: IMAGE_MODELS[x]["isim"],
+        index=0,
+        key="render_quality",
+        help="Pro: Daha yüksek kalite, daha detaylı malzeme dokuları ($0.07/görsel). Standard: Hızlı ve ekonomik ($0.02/görsel).",
+    )
+
+    # ── Veri hazırlığı ──
+    imar = st.session_state.get("imar")
+    hesap = st.session_state.get("hesaplama")
+    parsel = st.session_state.get("parsel")
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
     )
 
-    if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce bir kat planı seçin.")
+    # Bina parametreleri (varsa hesaplamadan al, yoksa varsayılan)
+    kat_sayisi = imar.kat_adedi if imar else 4
+    kat_yuksekligi = 3.0
+    if hesap and hesap.cekme_polygonu:
+        from utils.geometry_helpers import polygon_bounds_boyutlar
+        taban_en, taban_boy = polygon_bounds_boyutlar(hesap.cekme_polygonu)
+    else:
+        taban_en, taban_boy = 20.0, 15.0
+
+    # Parsel boyutları
+    if parsel:
+        pb = parsel.polygon.bounds
+        parsel_en = pb[2] - pb[0]
+        parsel_boy = pb[3] - pb[1]
+    else:
+        parsel_en, parsel_boy = 30.0, 40.0
+
+    on_bahce = imar.on_bahce if imar else 5.0
+    yan_bahce = imar.yan_bahce if imar else 3.0
+    arka_bahce = imar.arka_bahce if imar else 3.0
+
+    bina_prog = st.session_state.get("bina_programi")
+    if bina_prog and bina_prog.katlar and bina_prog.katlar[0].daireler:
+        daire = bina_prog.katlar[0].daireler[0]
+        daire_tipi = daire.tip
+        daire_alan = daire.brut_m2
+        daire_sayisi_per_kat = len(bina_prog.katlar[0].daireler)
+    else:
+        daire_tipi = "3+1"
+        daire_alan = 120.0
+        daire_sayisi_per_kat = 2
+
+    # ── Tabs: 4 ana render modu ──
+    tab_exterior, tab_interior, tab_site, tab_gallery = st.tabs([
+        "🏢 Dış Cephe",
+        "🛋️ İç Mekan",
+        "🗺️ Site Planı",
+        "🖼️ Galeri & Rapor",
+    ])
+
+    # ══════════════════════════════════════════════════
+    # TAB 1: Dış Cephe Render
+    # ══════════════════════════════════════════════════
+    with tab_exterior:
+        st.subheader("Fotorealistik Dış Cephe Render")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            render_modu = st.radio(
+                "Render Modu",
+                ["Tekli Render", "4 Stil Karşılaştırma"],
+                key="ext_render_mode",
+                horizontal=True,
+            )
+            mimari_stil = st.selectbox(
+                "Mimari Stil",
+                list(STYLE_VARIANTS.keys()),
+                format_func=lambda x: STYLE_VARIANTS[x]["isim"],
+                key="ext_stil",
+            )
+        with col2:
+            kamera = st.select_slider(
+                "Kamera Açısı",
+                CAMERA_ANGLES,
+                value="Elevated 30° corner perspective",
+                key="ext_kamera",
+            )
+            aydinlatma = st.select_slider(
+                "Aydınlatma",
+                LIGHTING_OPTIONS,
+                value="Golden hour warm sunset",
+                key="ext_aydinlatma",
+            )
+
+        with st.expander("Detay Ayarları"):
+            det_col1, det_col2 = st.columns(2)
+            with det_col1:
+                balkon_key = st.selectbox(
+                    "Balkon Tipi",
+                    list(BALCONY_TYPES.keys()),
+                    format_func=lambda x: BALCONY_TYPES[x],
+                    key="ext_balkon",
+                )
+                sehir = st.text_input("Şehir", "İstanbul", key="ext_sehir")
+            with det_col2:
+                zemin_kat = st.checkbox("Zemin kat ticari alan", key="ext_zemin")
+
+        # Bina bilgi özeti
+        st.info(
+            f"Bina: {kat_sayisi} kat | {taban_en:.1f}x{taban_boy:.1f}m taban | "
+            f"{daire_sayisi_per_kat} daire/kat | {daire_tipi} ({daire_alan:.0f}m²)"
+        )
+
+        prompt_kwargs = dict(
+            kat_sayisi=kat_sayisi,
+            taban_en=taban_en,
+            taban_boy=taban_boy,
+            kat_yuksekligi=kat_yuksekligi,
+            daire_sayisi_per_kat=daire_sayisi_per_kat,
+            daire_tipi=daire_tipi,
+            daire_alan=daire_alan,
+            balkon_tipi=balkon_key,
+            mimari_stil_key=mimari_stil,
+            sehir=sehir,
+            kamera_acisi=kamera,
+            aydinlatma=aydinlatma,
+            zemin_kat_ticari=zemin_kat,
+        )
+
+        if render_modu == "Tekli Render":
+            if st.button("AI Render Oluştur", type="primary", key="btn_ext_render"):
+                prompt = build_exterior_prompt(**prompt_kwargs)
+
+                if not grok_key:
+                    st.warning("API key yok — prompt önizleme:")
+                    st.code(prompt, language="text")
+                else:
+                    with st.spinner("Grok Imagine render üretiyor... (10-30 saniye)"):
+                        result = generate_image(
+                            prompt=prompt,
+                            api_key=grok_key,
+                            render_type="exterior",
+                            style=STYLE_VARIANTS[mimari_stil]["isim"],
+                            quality=render_quality,
+                        )
+
+                    if result.success and result.image_data:
+                        st.image(result.image_data, use_container_width=True)
+                        st.success("Render tamamlandı!")
+                        _save_render_to_history(result)
+                    elif result.success and result.image_url:
+                        st.image(result.image_url, use_container_width=True)
+                        st.success("Render tamamlandı!")
+                        _save_render_to_history(result)
+                    else:
+                        st.error(f"Render hatası: {result.error}")
+
+        else:  # 4 Stil Karşılaştırma
+            if st.button("4 Stil Karşılaştırma Oluştur", type="primary", key="btn_ext_4stil"):
+                if not grok_key:
+                    st.warning("API key gerekli — 4 stil karşılaştırma için Grok API key girin.")
+                else:
+                    with st.spinner("4 farklı mimari stilde render üretiliyor..."):
+                        results = generate_style_comparison(
+                            prompt_builder_func=build_exterior_prompt,
+                            prompt_kwargs=prompt_kwargs,
+                            api_key=grok_key,
+                            quality=render_quality,
+                        )
+
+                    cols = st.columns(2)
+                    for i, res in enumerate(results):
+                        with cols[i % 2]:
+                            if res.success and (res.image_data or res.image_url):
+                                img = res.image_data if res.image_data else res.image_url
+                                st.image(img, caption=res.style, use_container_width=True)
+                                _save_render_to_history(res)
+                            else:
+                                st.error(f"{res.style}: {res.error}")
+
+        # ── Multi-turn düzenleme (Özellik 5) ──
+        _render_edit_section(grok_key)
+
+    # ══════════════════════════════════════════════════
+    # TAB 2: İç Mekan Render
+    # ══════════════════════════════════════════════════
+    with tab_interior:
+        st.subheader("İç Mekan Daire Planı Görselleştirme")
+
+        has_plan = plan_data is not None and "plan" in (plan_data or {})
+
+        if has_plan:
+            plan = plan_data["plan"]
+            oda_list = [r for r in plan.rooms if r.room_type not in ("koridor",)]
+            oda_isimleri = [r.name for r in oda_list]
+        else:
+            oda_list = []
+            oda_isimleri = []
+
+        if not oda_isimleri:
+            st.info("Kat planı seçilmemiş. Manuel oda bilgisi girin veya önce kat planı oluşturun.")
+            ic_col1, ic_col2 = st.columns(2)
+            with ic_col1:
+                oda_tipi = st.selectbox(
+                    "Oda Tipi",
+                    list(ROOM_TYPE_DETAILS.keys()),
+                    format_func=lambda x: x.replace("_", " ").title(),
+                    key="int_oda_tipi_manual",
+                )
+                oda_en = st.number_input("Genişlik (m)", 2.0, 10.0, 4.5, 0.5, key="int_en_manual")
+            with ic_col2:
+                oda_boy = st.number_input("Derinlik (m)", 2.0, 10.0, 3.5, 0.5, key="int_boy_manual")
+                pencere_yonu = st.selectbox("Pencere Yönü", ["south", "north", "east", "west"],
+                                           format_func=lambda x: {"south": "Güney", "north": "Kuzey", "east": "Doğu", "west": "Batı"}[x],
+                                           key="int_yon_manual")
+        else:
+            secili_oda = st.selectbox("Oda Seçin", oda_isimleri, key="int_oda_sec")
+            room = next((r for r in oda_list if r.name == secili_oda), None)
+            if room:
+                oda_tipi = room.room_type
+                oda_en = room.width
+                oda_boy = room.height
+                pencere_yonu = room.facing_direction or "south"
+                st.info(f"{room.name}: {oda_en:.1f}x{oda_boy:.1f}m = {room.area:.1f}m²")
+            else:
+                oda_tipi, oda_en, oda_boy, pencere_yonu = "salon", 4.5, 3.5, "south"
+
+        ic_stil = st.selectbox(
+            "İç Mekan Stili",
+            list(STYLE_VARIANTS.keys()),
+            format_func=lambda x: STYLE_VARIANTS[x]["isim"],
+            key="int_stil",
+        )
+
+        ic_render_mode = st.radio(
+            "Render Modu",
+            ["Tek Oda", "Tüm Odalar"],
+            horizontal=True,
+            key="int_render_mode",
+        )
+
+        if ic_render_mode == "Tek Oda":
+            if st.button("İç Mekan Render Oluştur", type="primary", key="btn_int_render"):
+                prompt = build_interior_prompt(
+                    oda_tipi=oda_tipi,
+                    oda_en=oda_en,
+                    oda_boy=oda_boy,
+                    pencere_yonu=pencere_yonu,
+                    mimari_stil_key=ic_stil,
+                )
+
+                if not grok_key:
+                    st.warning("API key yok — prompt önizleme:")
+                    st.code(prompt, language="text")
+                else:
+                    with st.spinner("İç mekan render üretiliyor..."):
+                        result = generate_image(
+                            prompt=prompt,
+                            api_key=grok_key,
+                            render_type="interior",
+                            style=STYLE_VARIANTS[ic_stil]["isim"],
+                            quality=render_quality,
+                        )
+
+                    if result.success and (result.image_data or result.image_url):
+                        img = result.image_data if result.image_data else result.image_url
+                        st.image(img, use_container_width=True)
+                        st.success("İç mekan render tamamlandı!")
+                        _save_render_to_history(result)
+                    else:
+                        st.error(f"Render hatası: {result.error}")
+
+        else:  # Tüm Odalar
+            if st.button("Tüm Odaları Render Et", type="primary", key="btn_int_all"):
+                if not grok_key:
+                    st.warning("Tüm odalar için API key gerekli.")
+                elif not oda_list:
+                    st.warning("Kat planı seçilmemiş.")
+                else:
+                    progress = st.progress(0)
+                    for idx, room in enumerate(oda_list):
+                        progress.progress((idx + 1) / len(oda_list), f"{room.name} render ediliyor...")
+                        prompt = build_interior_prompt(
+                            oda_tipi=room.room_type,
+                            oda_en=room.width,
+                            oda_boy=room.height,
+                            pencere_yonu=room.facing_direction or "south",
+                            mimari_stil_key=ic_stil,
+                        )
+                        result = generate_image(
+                            prompt=prompt,
+                            api_key=grok_key,
+                            render_type="interior",
+                            style=f"{STYLE_VARIANTS[ic_stil]['isim']} - {room.name}",
+                            quality=render_quality,
+                        )
+                        if result.success and (result.image_data or result.image_url):
+                            img = result.image_data if result.image_data else result.image_url
+                            st.image(img, caption=room.name, use_container_width=True)
+                            _save_render_to_history(result)
+                        else:
+                            st.warning(f"{room.name}: {result.error}")
+
+                    progress.progress(1.0, "Tamamlandı!")
+
+        # İç mekan düzenleme
+        _render_edit_section(grok_key, prefix="int")
+
+    # ══════════════════════════════════════════════════
+    # TAB 3: Site Planı
+    # ══════════════════════════════════════════════════
+    with tab_site:
+        st.subheader("Arazi ve Çevre Konteksti — Kuşbakışı Site Planı")
+
+        st.info(
+            f"Parsel: {parsel_en:.1f}x{parsel_boy:.1f}m | "
+            f"Bina: {taban_en:.1f}x{taban_boy:.1f}m | "
+            f"Çekmeler: Ön {on_bahce:.1f}m, Yan {yan_bahce:.1f}m, Arka {arka_bahce:.1f}m"
+        )
+
+        site_col1, site_col2 = st.columns(2)
+        with site_col1:
+            otopark_sec = st.selectbox(
+                "Otopark",
+                list(OTOPARK_OPTIONS.keys()),
+                format_func=lambda x: OTOPARK_OPTIONS[x],
+                key="site_otopark",
+            )
+        with site_col2:
+            peyzaj_sec = st.multiselect(
+                "Peyzaj Öğeleri",
+                PEYZAJ_OPTIONS,
+                default=["Ağaçlar", "Çim alan", "Yürüyüş yolu"],
+                key="site_peyzaj",
+            )
+
+        if st.button("Site Planı Render Oluştur", type="primary", key="btn_site_render"):
+            prompt = build_site_plan_prompt(
+                parsel_en=parsel_en,
+                parsel_boy=parsel_boy,
+                taban_en=taban_en,
+                taban_boy=taban_boy,
+                on_bahce=on_bahce,
+                yan_bahce=yan_bahce,
+                arka_bahce=arka_bahce,
+                kat_sayisi=kat_sayisi,
+                kat_yuksekligi=kat_yuksekligi,
+                otopark=otopark_sec,
+                peyzaj_secimler=peyzaj_sec,
+            )
+
+            if not grok_key:
+                st.warning("API key yok — prompt önizleme:")
+                st.code(prompt, language="text")
+            else:
+                with st.spinner("Site planı render üretiliyor..."):
+                    result = generate_image(
+                        prompt=prompt,
+                        api_key=grok_key,
+                        aspect_ratio="1:1",
+                        render_type="site_plan",
+                        style="Site Plan",
+                        quality=render_quality,
+                    )
+
+                if result.success and (result.image_data or result.image_url):
+                    img = result.image_data if result.image_data else result.image_url
+                    st.image(img, use_container_width=True)
+                    st.success("Site planı render tamamlandı!")
+                    _save_render_to_history(result)
+                else:
+                    st.error(f"Render hatası: {result.error}")
+
+        _render_edit_section(grok_key, prefix="site")
+
+    # ══════════════════════════════════════════════════
+    # TAB 4: Galeri & PDF Rapor (Özellik 6)
+    # ══════════════════════════════════════════════════
+    with tab_gallery:
+        st.subheader("Render Galerisi & PDF Rapor")
+
+        history = st.session_state.get("render_history", [])
+
+        if not history:
+            st.info("Henüz render üretilmedi. Diğer sekmelerden render oluşturun.")
+        else:
+            st.markdown(f"**Toplam {len(history)} render**")
+
+            # Galeri grid
+            cols = st.columns(3)
+            selected_indices = []
+            for i, render in enumerate(history):
+                with cols[i % 3]:
+                    img_b64 = render.get("image_data_b64", "")
+                    if img_b64:
+                        img_bytes = base64_to_image_bytes(img_b64)
+                        st.image(img_bytes, use_container_width=True)
+                    else:
+                        st.info(f"Görsel {i + 1} (veri yok)")
+
+                    caption = render.get("style", render.get("render_type", ""))
+                    ts = render.get("timestamp", "")
+                    if ts:
+                        try:
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(ts)
+                            caption += f" | {dt.strftime('%H:%M')}"
+                        except Exception:
+                            pass
+                    st.caption(caption)
+
+                    if st.checkbox(f"Rapora ekle", key=f"gallery_sel_{i}", value=True):
+                        selected_indices.append(i)
+
+            # PDF Rapor oluşturma
+            st.markdown("---")
+            if st.button("PDF Rapor Oluştur", type="primary", key="btn_pdf"):
+                from utils.pdf_report import generate_render_report
+
+                # Parsel bilgileri
+                parsel_bilgi = {}
+                if parsel:
+                    pb = parsel.polygon.bounds
+                    parsel_bilgi = {
+                        "Parsel Genislik (m)": f"{parsel_en:.1f}",
+                        "Parsel Derinlik (m)": f"{parsel_boy:.1f}",
+                        "Parsel Alan (m2)": f"{parsel_en * parsel_boy:.0f}",
+                    }
+
+                # İmar parametreleri
+                imar_bilgi = {}
+                if imar:
+                    imar_bilgi = {
+                        "Kat Adedi": imar.kat_adedi,
+                        "TAKS": f"{imar.taks:.2f}",
+                        "KAKS/Emsal": f"{imar.kaks:.2f}",
+                        "On Bahce (m)": f"{imar.on_bahce:.1f}",
+                        "Yan Bahce (m)": f"{imar.yan_bahce:.1f}",
+                        "Arka Bahce (m)": f"{imar.arka_bahce:.1f}",
+                    }
+
+                # Hesaplama sonuçları
+                hesap_bilgi = {}
+                if hesap:
+                    hesap_bilgi = {
+                        "Taban Alani (m2)": f"{hesap.taban_insaat_alani:.1f}",
+                        "Toplam Insaat (m2)": f"{hesap.toplam_insaat_alani:.1f}",
+                        "Kat Basi Net (m2)": f"{hesap.kat_basi_net_alan:.1f}",
+                    }
+
+                secilen_renderlar = [history[i] for i in selected_indices if i < len(history)]
+
+                with st.spinner("PDF rapor oluşturuluyor..."):
+                    pdf_bytes = generate_render_report(
+                        parsel_bilgileri=parsel_bilgi,
+                        imar_parametreleri=imar_bilgi,
+                        hesaplama_sonuclari=hesap_bilgi,
+                        render_gorseller=secilen_renderlar,
+                    )
+
+                if pdf_bytes:
+                    st.download_button(
+                        "PDF İndir",
+                        data=pdf_bytes,
+                        file_name="imar_render_rapor.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                    st.success("PDF rapor hazır!")
+                else:
+                    st.error("PDF oluşturulamadı.")
+
+            # Galeri temizle
+            if st.button("Galeriyi Temizle", key="btn_clear_gallery"):
+                st.session_state.render_history = []
+                st.session_state.last_render = None
+                st.rerun()
+
+
+def _save_render_to_history(result):
+    """Render sonucunu session_state geçmişine kaydeder."""
+    from utils.image_utils import image_bytes_to_base64
+
+    entry = result.to_dict()
+    if result.image_data and not entry.get("image_data_b64"):
+        entry["image_data_b64"] = image_bytes_to_base64(result.image_data)
+
+    st.session_state.render_history.append(entry)
+    st.session_state.last_render = entry
+
+
+def _render_edit_section(grok_key: str, prefix: str = "ext"):
+    """Multi-turn iteratif düzenleme bölümü (Özellik 5).
+
+    Kullanıcı üretilen görseli doğal dilde düzenleyebilir.
+    """
+    from ai.grok_imagine import edit_image
+    from utils.image_utils import image_bytes_to_base64, base64_to_image_bytes
+
+    last = st.session_state.get("last_render")
+    if not last or not last.get("image_data_b64"):
         return
 
-    plan = plan_data["plan"]
-    oda_isimleri = [r.name for r in plan.rooms if r.room_type not in ("koridor", "antre")]
+    st.markdown("---")
+    st.markdown("### Görseli Düzenle")
+    st.caption("Önceki render'ı doğal dilde düzenleyin. Örnek: 'Cephe rengini bej yap', 'Balkonlara çiçek ekle'")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        secili_oda = st.selectbox("Oda Seçin", oda_isimleri, key="render_oda")
-    with col2:
-        stil = st.selectbox("Render Stili", list(RENDER_STYLES.keys()),
-                           format_func=lambda x: f"{RENDER_STYLES[x]['isim']} — {RENDER_STYLES[x]['aciklama']}", key="render_stil")
+    edit_prompt = st.text_input(
+        "Düzenleme talimatı",
+        placeholder="Örn: Cephe rengini bej yap, balkonları cam korkuluklu yap...",
+        key=f"edit_prompt_{prefix}",
+    )
 
-    room = next((r for r in plan.rooms if r.name == secili_oda), None)
-    if room:
-        st.info(f"📐 {room.name}: {room.width:.1f}×{room.height:.1f}m = {room.area:.1f} m² | Yön: {room.facing_direction or 'belirsiz'}")
-
-    grok_key = st.session_state.get("grok_api_key", "")
-
-    if st.button("🎨 Render Oluştur", type="primary"):
+    if st.button("Düzenle", key=f"btn_edit_{prefix}") and edit_prompt:
         if not grok_key:
-            st.warning("⚠️ Sidebar'dan Grok/xAI API key girin. Şimdilik prompt gösteriliyor:")
-            from ai.render_generator import _build_render_prompt
-            prompt = _build_render_prompt(secili_oda, room.room_type if room else "salon",
-                                         room.area if room else 20, "south", stil)
-            st.code(prompt, language="text")
+            st.warning("Düzenleme için API key gerekli.")
+            return
+
+        with st.spinner("Düzenleme uygulanıyor..."):
+            # Önceki görselin URL'si veya base64'ünü kullan
+            prev_url = last.get("url", "")
+            prev_b64 = last.get("image_data_b64", "")
+
+            result = edit_image(
+                image_url=prev_url,
+                edit_prompt=edit_prompt,
+                api_key=grok_key,
+                image_base64=prev_b64 if not prev_url else "",
+            )
+
+        if result.success and (result.image_data or result.image_url):
+            img = result.image_data if result.image_data else result.image_url
+            st.image(img, use_container_width=True)
+            st.success("Düzenleme tamamlandı!")
+            _save_render_to_history(result)
         else:
-            from ai.render_generator import generate_render
-            with st.spinner("Render üretiliyor..."):
-                result = generate_render(
-                    secili_oda, room.room_type, room.area,
-                    room.facing_direction or "south", stil, grok_key,
-                )
-            if result.success and result.image_url:
-                st.image(result.image_url, caption=f"{secili_oda} — {RENDER_STYLES[stil]['isim']}")
-            else:
-                st.error(f"Render hatası: {result.error}")
+            st.error(f"Düzenleme hatası: {result.error}")
