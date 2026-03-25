@@ -35,7 +35,7 @@ SAYFA_SIRASI = [
 
 
 def _navigate(page: str):
-    """Sayfa değiştirme callback fonksiyonu (on_click ile kullanılır)."""
+    """Sayfa değiştirme — session_state güncelle (st.rerun ile kullanılır)."""
     st.session_state.aktif_sayfa = page
 
 
@@ -89,10 +89,11 @@ def render_next_step_button(current_page: str):
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.button(f"Sonraki Adim: {next_label} →",
-                      type="primary", use_container_width=True,
-                      key=f"next_{current_page}",
-                      on_click=_navigate, args=(next_key,))
+            if st.button(f"Sonraki Adim: {next_label} →",
+                         type="primary", use_container_width=True,
+                         key=f"next_{current_page}"):
+                st.session_state.aktif_sayfa = next_key
+                st.rerun()
 
     # Önceki adım butonu
     if idx > 0:
@@ -100,10 +101,11 @@ def render_next_step_button(current_page: str):
         prev_label = SAYFA_SIRASI[idx - 1][1]
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.button(f"← Onceki: {prev_label}",
-                      use_container_width=True,
-                      key=f"prev_{current_page}",
-                      on_click=_navigate, args=(prev_key,))
+            if st.button(f"← Onceki: {prev_label}",
+                         use_container_width=True,
+                         key=f"prev_{current_page}"):
+                st.session_state.aktif_sayfa = prev_key
+                st.rerun()
 
 
 def get_sidebar_style(page_key: str) -> str:

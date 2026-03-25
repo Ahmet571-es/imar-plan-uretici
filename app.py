@@ -181,9 +181,10 @@ with st.sidebar:
         "9_render":       "🎨 [9] Fotogerçekçi Render",
     }
     for key, label in sayfa_secenekleri.items():
-        st.button(label, key=f"nav_{key}", use_container_width=True,
-                  type="primary" if st.session_state.aktif_sayfa == key else "secondary",
-                  on_click=_navigate, args=(key,))
+        if st.button(label, key=f"nav_{key}", use_container_width=True,
+                     type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
+            st.session_state.aktif_sayfa = key
+            st.rerun()
 
     st.markdown("### 💰 ANALİZ & FİZİBİLİTE")
     analiz_sayfalari = {
@@ -194,9 +195,10 @@ with st.sidebar:
         "14_karsilastir": "🔄 [14] Parsel Karşılaştırma",
     }
     for key, label in analiz_sayfalari.items():
-        st.button(label, key=f"nav_{key}", use_container_width=True,
-                  type="primary" if st.session_state.aktif_sayfa == key else "secondary",
-                  on_click=_navigate, args=(key,))
+        if st.button(label, key=f"nav_{key}", use_container_width=True,
+                     type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
+            st.session_state.aktif_sayfa = key
+            st.rerun()
 
     st.markdown("### 📜 HUKUK & BELGE")
     hukuk_sayfalari = {
@@ -206,9 +208,10 @@ with st.sidebar:
         "18_rapor":       "📄 [18] Rapor & Dışa Aktarma",
     }
     for key, label in hukuk_sayfalari.items():
-        st.button(label, key=f"nav_{key}", use_container_width=True,
-                  type="primary" if st.session_state.aktif_sayfa == key else "secondary",
-                  on_click=_navigate, args=(key,))
+        if st.button(label, key=f"nav_{key}", use_container_width=True,
+                     type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
+            st.session_state.aktif_sayfa = key
+            st.rerun()
 
     st.markdown("### ⚙️ OTOMASYON")
     otomasyon_sayfalari = {
@@ -218,9 +221,10 @@ with st.sidebar:
         "22_workflow":    "⚙️ [22] İş Akışı Motoru",
     }
     for key, label in otomasyon_sayfalari.items():
-        st.button(label, key=f"nav_{key}", use_container_width=True,
-                  type="primary" if st.session_state.aktif_sayfa == key else "secondary",
-                  on_click=_navigate, args=(key,))
+        if st.button(label, key=f"nav_{key}", use_container_width=True,
+                     type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
+            st.session_state.aktif_sayfa = key
+            st.rerun()
 
     st.markdown("### 🤖 AJANLAR")
     ajan_sayfalari = {
@@ -229,9 +233,10 @@ with st.sidebar:
         "25_piyasa":      "📈 [25] Piyasa İstihbarat",
     }
     for key, label in ajan_sayfalari.items():
-        st.button(label, key=f"nav_{key}", use_container_width=True,
-                  type="primary" if st.session_state.aktif_sayfa == key else "secondary",
-                  on_click=_navigate, args=(key,))
+        if st.button(label, key=f"nav_{key}", use_container_width=True,
+                     type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
+            st.session_state.aktif_sayfa = key
+            st.rerun()
 
     st.markdown("---")
 
@@ -465,8 +470,9 @@ def sayfa_parsel():
     # Sonraki adım butonu
     if st.session_state.parsel is not None:
         st.markdown("---")
-        st.button("➡️ Sonraki Adım: İmar Bilgileri", type="primary", key="btn_next_1",
-                  on_click=_navigate, args=("3_imar",))
+        if st.button("➡️ Sonraki Adım: İmar Bilgileri", type="primary", key="btn_next_1"):
+            st.session_state.aktif_sayfa = "3_imar"
+            st.rerun()
 
 
 # Sayfa 2 imported from pages.pages_other
@@ -570,8 +576,9 @@ def sayfa_imar():
         }
         st.dataframe(pd.DataFrame(ozet_data), hide_index=True, use_container_width=True)
 
-        st.button("➡️ Sonraki Adım: Hesaplama Sonuçları", type="primary", key="btn_next_3",
-                  on_click=_navigate, args=("4_hesaplama",))
+        if st.button("➡️ Sonraki Adım: Hesaplama Sonuçları", type="primary", key="btn_next_3"):
+            st.session_state.aktif_sayfa = "4_hesaplama"
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -656,8 +663,9 @@ def sayfa_hesaplama():
 
     # Sonraki adım
     st.markdown("---")
-    st.button("➡️ Sonraki Adım: Daire Bölümleme", type="primary", key="btn_next_4",
-              on_click=_navigate, args=("5_daire",))
+    if st.button("➡️ Sonraki Adım: Daire Bölümleme", type="primary", key="btn_next_4"):
+        st.session_state.aktif_sayfa = "5_daire"
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -870,8 +878,9 @@ def sayfa_daire():
     # Sonraki adım
     if st.session_state.bina_programi is not None:
         st.markdown("---")
-        st.button("➡️ Sonraki Adım: Kat Planı Üretimi", type="primary", key="btn_next_5",
-                  on_click=_navigate, args=("6_plan",))
+        if st.button("➡️ Sonraki Adım: Kat Planı Üretimi", type="primary", key="btn_next_5"):
+            st.session_state.aktif_sayfa = "6_plan"
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
