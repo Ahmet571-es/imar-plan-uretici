@@ -52,7 +52,7 @@ SOGUTMA_KATSAYISI = {
 
 @dataclass
 class EnerjiSonucu:
-    """Enerji performans sonucu."""
+    """Enerji performans sonucu — derinleştirilmiş."""
     yillik_isitma_kwh_m2: float = 0.0
     yillik_sogutma_kwh_m2: float = 0.0
     yillik_toplam_kwh_m2: float = 0.0
@@ -65,21 +65,38 @@ class EnerjiSonucu:
     gunes_kazanci_kwh: float = 0.0
     oneriler: list = field(default_factory=list)
 
+    # Derinleştirilmiş analiz verileri
+    havalandirma_kaybi_kwh_m2: float = 0.0
+    sicak_su_kwh_m2: float = 0.0
+    co2_emisyonu_kg_m2: float = 0.0
+    birincil_enerji_kwh_m2: float = 0.0
+    isitma_maliyet_tl: float = 0.0
+    sogutma_maliyet_tl: float = 0.0
+    yalitimsiz_karsilastirma_kwh_m2: float = 0.0
+    tasarruf_orani: float = 0.0
+    isi_kayip_dagilimi: dict = field(default_factory=dict)  # % dağılım
+
     def to_dict(self) -> dict:
         sinif_info = ENERJI_SINIFLARI.get(self.enerji_sinifi, {})
         return {
-            "Enerji Sinifi": (f"{self.enerji_sinifi} — "
-                              f"{sinif_info.get('aciklama', '')}"),
-            "Yillik Isitma (kWh/m2)": f"{self.yillik_isitma_kwh_m2:.0f}",
-            "Yillik Sogutma (kWh/m2)": f"{self.yillik_sogutma_kwh_m2:.0f}",
-            "Yillik Toplam (kWh/m2)": f"{self.yillik_toplam_kwh_m2:.0f}",
-            "Yillik Enerji Maliyeti (TL)": (
-                f"{self.yillik_enerji_maliyeti:,.0f}"),
-            "Duvar U-degeri (W/m2K)": f"{self.duvar_u:.2f}",
-            "Pencere U-degeri (W/m2K)": f"{self.pencere_u:.2f}",
-            "Cati U-degeri (W/m2K)": f"{self.cati_u:.2f}",
-            "Pencere/Duvar Orani": f"{self.pencere_duvar_orani:.0%}",
-            "Gunes Kazanci (kWh/yil)": f"{self.gunes_kazanci_kwh:.0f}",
+            "Enerji Sınıfı": f"{self.enerji_sinifi} — {sinif_info.get('aciklama', '')}",
+            "Yıllık Isıtma (kWh/m²)": f"{self.yillik_isitma_kwh_m2:.0f}",
+            "Yıllık Soğutma (kWh/m²)": f"{self.yillik_sogutma_kwh_m2:.0f}",
+            "Havalandırma Kaybı (kWh/m²)": f"{self.havalandirma_kaybi_kwh_m2:.0f}",
+            "Sıcak Su (kWh/m²)": f"{self.sicak_su_kwh_m2:.0f}",
+            "Yıllık Toplam (kWh/m²)": f"{self.yillik_toplam_kwh_m2:.0f}",
+            "Birincil Enerji (kWh/m²)": f"{self.birincil_enerji_kwh_m2:.0f}",
+            "CO₂ Emisyonu (kg/m²/yıl)": f"{self.co2_emisyonu_kg_m2:.1f}",
+            "Isıtma Maliyeti (₺/yıl)": f"{self.isitma_maliyet_tl:,.0f}",
+            "Soğutma Maliyeti (₺/yıl)": f"{self.sogutma_maliyet_tl:,.0f}",
+            "Toplam Maliyet (₺/yıl)": f"{self.yillik_enerji_maliyeti:,.0f}",
+            "Yalıtımsız Baz (kWh/m²)": f"{self.yalitimsiz_karsilastirma_kwh_m2:.0f}",
+            "Tasarruf Oranı": f"{self.tasarruf_orani:.0%}",
+            "Duvar U (W/m²K)": f"{self.duvar_u:.2f}",
+            "Pencere U (W/m²K)": f"{self.pencere_u:.2f}",
+            "Çatı U (W/m²K)": f"{self.cati_u:.2f}",
+            "Pencere/Duvar Oranı": f"{self.pencere_duvar_orani:.0%}",
+            "Güneş Kazancı (kWh/yıl)": f"{self.gunes_kazanci_kwh:.0f}",
         }
 
 
@@ -186,6 +203,72 @@ def enerji_performans_hesapla(
     sogutma_maliyet = (sonuc.yillik_sogutma_kwh_m2
                        * toplam_alan * elektrik_fiyat)
     sonuc.yillik_enerji_maliyeti = isitma_maliyet + sogutma_maliyet
+
+    # ── Havalandırma / İnfiltrasyon kaybı ──
+    # 0.5 ACH (hava değişimi/saat) × hacim × 0.33 (W·h/m³·K) × HDD × 24 / 1000
+    kat_yuksekligi = 2.60
+    bina_hacmi = toplam_alan * kat_yuksekligi
+    ach = 0.5  # Hava değişimi oranı (düşük infiltrasyon)
+    havalandirma_kaybi = ach * bina_hacmi * 0.33 * hdd * 24 / 1000
+    sonuc.havalandirma_kaybi_kwh_m2 = havalandirma_kaybi / toplam_alan
+
+    # ── Sıcak su (DHW) ──
+    # 50 litre/kişi/gün, 4 kişi/daire varsayımı, ΔT=35°C, 365 gün
+    daire_sayisi = max(1, toplam_alan // 120)
+    kisi_sayisi = daire_sayisi * 3.5
+    sicak_su_kwh = kisi_sayisi * 50 * 4.186 * 35 * 365 / (3600 * 1000)
+    sonuc.sicak_su_kwh_m2 = sicak_su_kwh / toplam_alan
+
+    # Toplam (sıcak su ve havalandırma dahil)
+    sonuc.yillik_toplam_kwh_m2 = (sonuc.yillik_isitma_kwh_m2
+                                   + sonuc.yillik_sogutma_kwh_m2
+                                   + sonuc.havalandirma_kaybi_kwh_m2 * 0.3  # Kısmen geri kazanım
+                                   + sonuc.sicak_su_kwh_m2)
+
+    # ── CO₂ emisyonu ──
+    # Doğalgaz: 0.20 kg CO₂/kWh, Elektrik: 0.47 kg CO₂/kWh (TR şebekesi)
+    gaz_kwh = sonuc.yillik_isitma_kwh_m2 + sonuc.sicak_su_kwh_m2
+    elek_kwh = sonuc.yillik_sogutma_kwh_m2
+    sonuc.co2_emisyonu_kg_m2 = gaz_kwh * 0.20 + elek_kwh * 0.47
+
+    # ── Birincil enerji ──
+    # Doğalgaz çevirme faktörü: 1.0, Elektrik: 2.36
+    sonuc.birincil_enerji_kwh_m2 = gaz_kwh * 1.0 + elek_kwh * 2.36
+
+    # ── Yalıtımsız baz ile karşılaştırma ──
+    baz_u_duvar = 1.50  # Yalıtımsız tuğla duvar
+    baz_u_pencere = 5.80  # Tek cam
+    baz_q = (opak_duvar_alani * baz_u_duvar + pencere_alani * baz_u_pencere
+             + cati_alani * 1.50)
+    baz_isitma = max(0, baz_q * hdd * 24 / 1000) / toplam_alan / 0.85
+    sonuc.yalitimsiz_karsilastirma_kwh_m2 = baz_isitma + sonuc.yillik_sogutma_kwh_m2 * 1.3
+    if sonuc.yalitimsiz_karsilastirma_kwh_m2 > 0:
+        sonuc.tasarruf_orani = 1 - sonuc.yillik_toplam_kwh_m2 / sonuc.yalitimsiz_karsilastirma_kwh_m2
+    sonuc.tasarruf_orani = max(0, min(1, sonuc.tasarruf_orani))
+
+    # ── Isı kaybı dağılımı ──
+    toplam_kayip = q_duvar + q_pencere + q_cati + max(havalandirma_kaybi / (hdd * 24 / 1000 + 1e-6), 0)
+    if toplam_kayip > 0:
+        sonuc.isi_kayip_dagilimi = {
+            "Duvar": f"{q_duvar / toplam_kayip * 100:.0f}%",
+            "Pencere": f"{q_pencere / toplam_kayip * 100:.0f}%",
+            "Çatı": f"{q_cati / toplam_kayip * 100:.0f}%",
+            "Havalandırma": f"{max(0, 100 - q_duvar / toplam_kayip * 100 - q_pencere / toplam_kayip * 100 - q_cati / toplam_kayip * 100):.0f}%",
+        }
+
+    # Enerji sınıfı (güncellenmiş toplam üzerinden)
+    for sinif, info in ENERJI_SINIFLARI.items():
+        if sonuc.yillik_toplam_kwh_m2 <= info["max_kwh"]:
+            sonuc.enerji_sinifi = sinif
+            break
+
+    # ── Maliyet detayı ──
+    kwh_per_m3 = 10.64
+    yillik_m3 = (sonuc.yillik_isitma_kwh_m2 * toplam_alan) / kwh_per_m3
+    sonuc.isitma_maliyet_tl = yillik_m3 * dogalgaz_birim_fiyat
+    elektrik_fiyat = 4.50
+    sonuc.sogutma_maliyet_tl = sonuc.yillik_sogutma_kwh_m2 * toplam_alan * elektrik_fiyat
+    sonuc.yillik_enerji_maliyeti = sonuc.isitma_maliyet_tl + sonuc.sogutma_maliyet_tl
 
     # Öneriler
     sonuc.oneriler = _generate_energy_recommendations(
