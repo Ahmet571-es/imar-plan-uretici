@@ -40,15 +40,28 @@ else:
 
 # ── SQLAlchemy engine oluşturma ──
 if _using_postgres:
-    # PostgreSQL için bağlantı havuzu ayarları
-    engine = create_engine(
-        DATABASE_URL,
-        echo=False,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-    )
-else:
+    try:
+        # PostgreSQL için bağlantı havuzu ayarları
+        engine = create_engine(
+            DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+        )
+    except Exception as _pg_err:
+        # psycopg2 kurulu değilse veya URL geçersizse SQLite'a düş
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "PostgreSQL bağlantısı kurulamadı (%s), SQLite'a düşülüyor.", _pg_err
+        )
+        _using_postgres = False
+        DB_DIR = "/tmp/imar_plan_db"
+        os.makedirs(DB_DIR, exist_ok=True)
+        DB_PATH = os.path.join(DB_DIR, "imar_plan.db")
+        DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+if not _using_postgres:
     # SQLite için thread güvenliği ve zaman aşımı ayarları
     engine = create_engine(
         DATABASE_URL,
