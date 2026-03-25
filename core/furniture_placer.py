@@ -378,3 +378,108 @@ def place_all_rooms(rooms: list[PlanRoom]) -> list[dict]:
         for p in placed:
             all_furniture.append(p.to_render_dict())
     return all_furniture
+
+
+# ══════════════════════════════════════════════════════════════
+# DERİNLEŞTİRİLMİŞ YERLEŞTİRME FONKSİYONLARI
+# ══════════════════════════════════════════════════════════════
+
+def evaluate_furniture_placement(room: PlanRoom, placed: list[PlacedFurniture]) -> dict:
+    """Mobilya yerleştirme kalitesini değerlendirir.
+
+    Returns:
+        {
+            "puan": int (0-100),
+            "toplam_mobilya_alani": float,
+            "doluluk_orani": float,
+            "sirkulasyon_yeterli": bool,
+            "ergonomi_sorunlari": list[str],
+            "oneriler": list[str],
+        }
+    """
+    if not placed or room.area <= 0:
+        return {"puan": 0, "toplam_mobilya_alani": 0, "doluluk_orani": 0,
+                "sirkulasyon_yeterli": True, "ergonomi_sorunlari": [], "oneriler": []}
+
+    toplam_mob_alan = sum(p.en * p.boy for p in placed)
+    doluluk = toplam_mob_alan / room.area
+    sorunlar = []
+    oneriler = []
+    puan = 100
+
+    # Doluluk oranı kontrolü
+    if doluluk > 0.60:
+        puan -= 20
+        sorunlar.append(f"Oda çok dolu: %{doluluk*100:.0f} (max %60 önerilir)")
+        oneriler.append("Daha kompakt mobilya seçimi yapın veya mobilya azaltın")
+    elif doluluk < 0.15:
+        puan -= 10
+        oneriler.append("Oda çok boş — ek mobilya eklenebilir")
+
+    # Sirkülasyon boşluğu kontrolü
+    sirk_yeterli = True
+    for i, p1 in enumerate(placed):
+        for p2 in placed[i+1:]:
+            gap_x = abs((p1.x + p1.en) - p2.x)
+            gap_y = abs((p1.y + p1.boy) - p2.y)
+            min_gap = min(gap_x, gap_y)
+            if min_gap < MIN_SIRKULASYON_BOSLUGU and min_gap > 0:
+                sirk_yeterli = False
+                sorunlar.append(f"{p1.isim} ↔ {p2.isim} arası boşluk yetersiz ({min_gap:.2f}m < {MIN_SIRKULASYON_BOSLUGU}m)")
+                puan -= 10
+
+    # Pencere önü kontrolü
+    for p in placed:
+        for win in room.windows:
+            wz = _get_window_zone(room, win)
+            if wz and _overlaps_any(p.x, p.y, p.en, p.boy, [wz]):
+                sorunlar.append(f"{p.isim} pencere önünü kapatıyor")
+                puan -= 5
+
+    # Kapı açılma kontrolü
+    for p in placed:
+        for door in room.doors:
+            dz = _get_door_zone(room, door)
+            if dz and _overlaps_any(p.x, p.y, p.en, p.boy, [dz]):
+                sorunlar.append(f"{p.isim} kapı açılma alanını engelliyor")
+                puan -= 10
+
+    # Oda tipine özel kontroller
+    if room.room_type == "salon":
+        # TV-koltuk mesafesi kontrolü (ideal: 2.5-4.0m)
+        tv = next((p for p in placed if "tv" in p.isim.lower()), None)
+        koltuk = next((p for p in placed if "koltuk" in p.isim.lower()), None)
+        if tv and koltuk:
+            dist = math.sqrt((tv.x - koltuk.x)**2 + (tv.y - koltuk.y)**2)
+            if dist < 2.0:
+                sorunlar.append(f"TV-koltuk mesafesi çok yakın: {dist:.1f}m (min 2.5m)")
+                puan -= 5
+            elif dist > 5.0:
+                sorunlar.append(f"TV-koltuk mesafesi çok uzak: {dist:.1f}m (max 4.0m)")
+                puan -= 5
+
+    elif room.room_type == "mutfak":
+        # Mutfak çalışma üçgeni kontrolü
+        ocak = next((p for p in placed if "ocak" in p.isim.lower()), None)
+        lavabo = next((p for p in placed if "lavabo" in p.isim.lower()), None)
+        buzdolabi = next((p for p in placed if "buzdolabı" in p.isim.lower() or "buzdolabi" in p.sembol.lower()), None)
+        if ocak and lavabo and buzdolabi:
+            d1 = math.sqrt((ocak.x - lavabo.x)**2 + (ocak.y - lavabo.y)**2)
+            d2 = math.sqrt((lavabo.x - buzdolabi.x)**2 + (lavabo.y - buzdolabi.y)**2)
+            d3 = math.sqrt((ocak.x - buzdolabi.x)**2 + (ocak.y - buzdolabi.y)**2)
+            cevre = d1 + d2 + d3
+            if cevre < 4.0:
+                sorunlar.append(f"Mutfak üçgeni çok dar: {cevre:.1f}m (min 4.0m)")
+                puan -= 5
+            elif cevre > 7.9:
+                sorunlar.append(f"Mutfak üçgeni çok geniş: {cevre:.1f}m (max 7.9m)")
+                puan -= 5
+
+    return {
+        "puan": max(0, min(100, puan)),
+        "toplam_mobilya_alani": round(toplam_mob_alan, 1),
+        "doluluk_orani": round(doluluk, 2),
+        "sirkulasyon_yeterli": sirk_yeterli,
+        "ergonomi_sorunlari": sorunlar,
+        "oneriler": oneriler,
+    }

@@ -16,8 +16,16 @@ def sayfa_plan():
     st.header("📋 Kat Planı Üretimi")
 
     if st.session_state.get("hesaplama") is None:
-        st.warning("⚠️ Önce hesaplama adımını tamamlayın.")
+        st.warning("⚠️ Önce hesaplama adımını tamamlayın. Soldaki menüden **[4] Hesaplama Sonuçları** sayfasına gidin.")
         return
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu adımda ne yapacaksınız?</b> Daire tipi ve g\u00fcne\u015f y\u00f6n\u00fcn\u00fc se\u00e7in, ard\u0131ndan plan \u00fcretim butonuna t\u0131klay\u0131n.
+    Sistem birden fazla alternatif plan \u00fcretir ve puanlar. <b>Profesyonel \u00dcretim</b> sekmesi API key olmadan \u00e7al\u0131\u015f\u0131r.
+    <b>AI Destekli</b> sekmesi Claude veya Grok API ile daha detayl\u0131 planlar \u00fcretir.
+    </div>
+    """, unsafe_allow_html=True)
 
     hesap = st.session_state.hesaplama
     imar = st.session_state.imar
@@ -135,6 +143,24 @@ def sayfa_plan():
                             st.metric("TOPLAM", v)
                         else:
                             st.text(f"{k}: {v}")
+
+                    # Derinleştirilmiş analiz verileri
+                    sc = plan_data["score"]
+                    if hasattr(sc, "mahremiyet_puani") and sc.mahremiyet_puani > 0:
+                        st.markdown("---")
+                        st.markdown("**Ek Analizler:**")
+                        st.text(f"Mahremiyet: {sc.mahremiyet_puani:.0f}/100")
+                        st.text(f"Fonksiyonel Bölge: {sc.fonksiyonel_bolge_puani:.0f}/100")
+                        st.text(f"Min. Boyut Uyumu: {sc.min_boyut_uyumu:.0f}/100")
+
+                    if hasattr(sc, "alan_dagilim_analizi") and sc.alan_dagilim_analizi:
+                        with st.expander("Alan Dağılımı"):
+                            for k2, v2 in sc.alan_dagilim_analizi.items():
+                                st.text(f"{k2}: {v2}")
+
+                    if hasattr(sc, "genel_degerlendirme") and sc.genel_degerlendirme:
+                        st.success(f"📝 {sc.genel_degerlendirme}")
+
                     if plan_data.get("reasoning"):
                         st.info(f"💬 {plan_data['reasoning']}")
 
@@ -144,10 +170,18 @@ def sayfa_plan():
                     import pandas as pd
                     df = pd.DataFrame([{
                         "Oda": r.name, "Boyut": f"{r.width:.1f}×{r.height:.1f}m",
-                        "Alan": f"{r.area:.1f} m²", "Cephe": r.facing_direction or "iç",
+                        "Alan": f"{r.area:.1f} m²",
+                        "Min Kenar": f"{r.min_dimension:.2f}m",
+                        "Cephe": r.facing_direction or "iç",
                         "Dış Duvar": "✅" if r.has_exterior_wall else "—",
                     } for r in plan_data["plan"].rooms])
                     st.dataframe(df, hide_index=True, use_container_width=True)
+
+                    # Güneş detayı
+                    if hasattr(sc, "gunes_detay") and sc.gunes_detay:
+                        with st.expander("☀️ Güneş Optimizasyonu Detayı"):
+                            for oda_adi, g_info in sc.gunes_detay.items():
+                                st.text(f"{oda_adi}: {g_info['yon']} yönü → {g_info['puan']}/100 (ideal: {g_info['ideal_yon']})")
 
                 if st.button(f"✅ Plan {i+1}'i Seç", key=f"select_plan_{i}"):
                     st.session_state.selected_plan = plan_data
@@ -169,6 +203,13 @@ def sayfa_ai_tefris():
     from drawing.plan_renderer_matplotlib import render_floor_plan
 
     st.header("🤖 AI İyileştirme & Mobilya Yerleştirme")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu adımda ne yapacaksınız?</b> Seçtiğiniz kat planına otomatik mobilya yerleştirme yapabilirsiniz.
+    Salon, yatak odası, mutfak gibi her odaya uygun mobilyalar otomatik konumlandırılır.
+    </div>
+    """, unsafe_allow_html=True)
 
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
@@ -210,6 +251,13 @@ def sayfa_3d():
 
     st.header("🏗️ 3D Görselleştirme")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne göreceksiniz?</b> Binanızın interaktif 3D modeli. Fare ile döndürebilir, yakınlaştırabilirsiniz.
+    Çatı tipini değiştirebilir, patlak görünümle her katı ayrı ayrı inceleyebilirsiniz.
+    </div>
+    """, unsafe_allow_html=True)
+
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
     )
@@ -217,7 +265,7 @@ def sayfa_3d():
     parsel = st.session_state.get("parsel")
 
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce bir kat planı üretin ve seçin.")
+        st.warning("⚠️ Önce bir kat planı üretin ve seçin. Soldaki menüden **[6] Kat Planı Üretimi** sayfasına gidin.")
         return
 
     col1, col2, col3, col4 = st.columns(4)
@@ -249,6 +297,14 @@ def sayfa_render():
     from ai.render_generator import RENDER_STYLES
 
     st.header("🎨 Fotogerçekçi İç Mekan Render")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Seçtiğiniz odanın fotogerçekçi iç mekan görselini AI ile oluşturabilirsiniz.
+    Oda ve stil seçin, ardından render butonuna tıklayın. Bu özellik Grok/xAI API key gerektirir.
+    API key yoksa render promptu metin olarak gösterilir.
+    </div>
+    """, unsafe_allow_html=True)
 
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None

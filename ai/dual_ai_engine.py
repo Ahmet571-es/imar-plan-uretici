@@ -5,7 +5,6 @@ Dual AI Plan Üretim Motoru — Claude Sonnet 4.6 + Grok 4.20 koordinatörü.
 Çapraz değerlendirme ile kaliteyi artırır.
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
 
@@ -142,9 +141,11 @@ def generate_dual_ai_plans(
         # Sırala
         result.best_plans.sort(key=lambda x: x.final_score, reverse=True)
 
-        logger.info(f"İterasyon {iteration} tamamlandı. "
-                    f"En iyi puan: {result.best_plans[0].final_score:.1f}/100"
-                    if result.best_plans else "Plan üretilemedi.")
+        if result.best_plans:
+            logger.info(f"İterasyon {iteration} tamamlandı. "
+                        f"En iyi puan: {result.best_plans[0].final_score:.1f}/100")
+        else:
+            logger.info("Plan üretilemedi.")
 
     # Özet oluştur
     if result.best_plans:

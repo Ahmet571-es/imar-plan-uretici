@@ -3,7 +3,6 @@ Kâr/Zarar Fizibilite Hesaplama + Duyarlılık Analizi.
 """
 
 from dataclasses import dataclass, field
-import numpy as np
 
 
 @dataclass
@@ -111,6 +110,7 @@ def duyarlilik_analizi(
 
 def create_sensitivity_heatmap(matris, maliyet_labels, fiyat_labels):
     """Duyarlılık matrisi ısı haritası oluşturur."""
+    import numpy as np
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

@@ -1,4 +1,5 @@
 libgeos-dev
 libgdal-dev
+libproj-dev
 libspatialindex-dev
 fonts-dejavu-core

@@ -82,7 +82,12 @@ def _review_with_claude(plan_info: str, api_key: str) -> dict | None:
             max_tokens=1024,
             messages=[{"role": "user", "content": REVIEW_PROMPT.format(plan_info=plan_info)}],
         )
-        return json.loads(response.content[0].text)
+        text = response.content[0].text
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+        return json.loads(text.strip())
     except Exception as e:
         logger.error(f"Claude review hatası: {e}")
         return _demo_review(plan_info)

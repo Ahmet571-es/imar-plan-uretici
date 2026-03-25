@@ -317,3 +317,317 @@ def calculate_ideal_dimensions(room_type: str, area: float) -> tuple[float, floa
     uzunluk = math.sqrt(area / ratio)
     genislik = area / uzunluk
     return (round(genislik, 2), round(uzunluk, 2))
+
+
+# ══════════════════════════════════════════════════════════════
+# MİNİMUM ODA BOYUTLARI (metre / m²)
+# ══════════════════════════════════════════════════════════════
+ROOM_MIN_DIMENSIONS = {
+    "salon": {"min_en": 3.0, "min_boy": 4.0, "min_alan": 12.0},
+    "yatak_odasi": {"min_en": 2.80, "min_boy": 3.20, "min_alan": 9.0},
+    "mutfak": {"min_en": 2.20, "min_boy": 2.50, "min_alan": 5.0},
+    "banyo": {"min_en": 1.50, "min_boy": 2.00, "min_alan": 3.5},
+    "wc": {"min_en": 0.90, "min_boy": 1.20, "min_alan": 1.5},
+    "antre": {"min_en": 1.20, "min_boy": 1.50, "min_alan": 3.0},
+    "koridor": {"min_en": 1.10, "min_boy": 2.00, "min_alan": 2.0},
+    "balkon": {"min_en": 1.20, "min_boy": 2.00, "min_alan": 2.0},
+}
+
+# ══════════════════════════════════════════════════════════════
+# DAİRE FONKSİYONEL ALAN ORANLARI
+# ══════════════════════════════════════════════════════════════
+DAIRE_FONKSIYONEL_ORANLAR = {
+    "yasam_alani_orani": {"min": 0.50, "ideal": 0.58, "max": 0.65},  # salon+yatak / toplam
+    "islak_hacim_orani": {"min": 0.15, "ideal": 0.22, "max": 0.30},  # banyo+wc+mutfak / toplam
+    "sirkulasyon_orani": {"min": 0.08, "ideal": 0.13, "max": 0.20},  # antre+koridor / toplam
+    "dis_alan_orani": {"min": 0.05, "ideal": 0.08, "max": 0.15},     # balkon / toplam
+    "duvar_kayip_orani": {"min": 0.12, "ideal": 0.18, "max": 0.25},  # (brüt-net)/brüt
+}
+
+# ══════════════════════════════════════════════════════════════
+# GÜRÜLTÜ ZONLARI
+# ══════════════════════════════════════════════════════════════
+GURULTU_ZONLARI = {
+    "sessiz": ["yatak_odasi"],
+    "orta": ["salon", "antre", "koridor", "balkon"],
+    "gurultulu": ["mutfak", "banyo", "wc"],
+}
+
+# ══════════════════════════════════════════════════════════════
+# AYDINLATMA GEREKSİNİMLERİ (lux)
+# ══════════════════════════════════════════════════════════════
+AYDINLATMA_GEREKSINIMLERI = {
+    "salon": {"min_lux": 150, "ideal_lux": 300, "dogal_isik_zorunlu": True},
+    "yatak_odasi": {"min_lux": 100, "ideal_lux": 200, "dogal_isik_zorunlu": True},
+    "mutfak": {"min_lux": 300, "ideal_lux": 500, "dogal_isik_zorunlu": True},
+    "banyo": {"min_lux": 200, "ideal_lux": 300, "dogal_isik_zorunlu": False},
+    "wc": {"min_lux": 100, "ideal_lux": 200, "dogal_isik_zorunlu": False},
+    "antre": {"min_lux": 100, "ideal_lux": 150, "dogal_isik_zorunlu": False},
+    "koridor": {"min_lux": 75, "ideal_lux": 100, "dogal_isik_zorunlu": False},
+    "balkon": {"min_lux": 50, "ideal_lux": 100, "dogal_isik_zorunlu": True},
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# AKILLI ÖNERİ FONKSİYONLARI
+# ══════════════════════════════════════════════════════════════
+
+def suggest_room_dimensions(room_type: str, area: float) -> dict:
+    """Oda tipi ve alanı için önerilen boyutları döndürür.
+
+    Parametreler:
+        room_type: Oda tipi (ör. "salon", "yatak_odasi")
+        area: Hedef alan (m²)
+
+    Döndürür:
+        dict: genislik, uzunluk, min boyut kontrolü, mobilya uyumu değerlendirmesi
+    """
+    import math
+
+    # İdeal en-boy oranını kullanarak genişlik × uzunluk hesapla
+    ratio = get_ideal_aspect_ratio(room_type)
+    uzunluk = math.sqrt(area / ratio)
+    genislik = area / uzunluk
+
+    # Minimum boyut kontrolü
+    min_dims = ROOM_MIN_DIMENSIONS.get(room_type, {})
+    min_en = min_dims.get("min_en", 0)
+    min_boy = min_dims.get("min_boy", 0)
+    min_alan = min_dims.get("min_alan", 0)
+
+    en_ok = genislik >= min_en
+    boy_ok = uzunluk >= min_boy
+    alan_ok = area >= min_alan
+    min_boyut_uygun = en_ok and boy_ok and alan_ok
+
+    # Minimum boyut ihlali varsa boyutları alt sınıra çek
+    if not en_ok and min_en > 0:
+        genislik = min_en
+        uzunluk = area / genislik
+    if not boy_ok and min_boy > 0:
+        uzunluk = min_boy
+        genislik = area / uzunluk
+
+    # Mobilya uyum değerlendirmesi
+    mobilya_uyumu = _mobilya_uyumu_degerlendir(room_type, genislik, uzunluk)
+
+    return {
+        "genislik": round(genislik, 2),
+        "uzunluk": round(uzunluk, 2),
+        "alan": round(genislik * uzunluk, 2),
+        "en_boy_orani": round(genislik / uzunluk, 2) if uzunluk > 0 else 0,
+        "min_boyut_uygun": min_boyut_uygun,
+        "min_boyut_detay": {
+            "en_ok": en_ok,
+            "boy_ok": boy_ok,
+            "alan_ok": alan_ok,
+        },
+        "mobilya_uyumu": mobilya_uyumu,
+    }
+
+
+def _mobilya_uyumu_degerlendir(room_type: str, genislik: float, uzunluk: float) -> dict:
+    """Oda boyutlarına göre temel mobilya sığma değerlendirmesi yapar."""
+    # Yaygın mobilya minimum boyutları (metre)
+    MOBILYA_GEREKSINIMLERI = {
+        "salon": {
+            "koltuk_takimi": {"min_en": 2.40, "min_boy": 3.00},
+            "tv_unitesi": {"min_en": 1.50, "min_boy": 0.45},
+        },
+        "yatak_odasi": {
+            "cift_kisilik_yatak": {"min_en": 1.60, "min_boy": 2.10},
+            "gardrop": {"min_en": 1.20, "min_boy": 0.60},
+        },
+        "mutfak": {
+            "tezgah_alt_dolap": {"min_en": 2.00, "min_boy": 0.60},
+            "buzdolabi": {"min_en": 0.70, "min_boy": 0.70},
+        },
+        "banyo": {
+            "kuve_veya_dus": {"min_en": 0.80, "min_boy": 1.40},
+            "lavabo": {"min_en": 0.60, "min_boy": 0.50},
+        },
+        "wc": {
+            "klozet": {"min_en": 0.40, "min_boy": 0.70},
+            "lavabo": {"min_en": 0.45, "min_boy": 0.35},
+        },
+    }
+
+    mobilyalar = MOBILYA_GEREKSINIMLERI.get(room_type, {})
+    sonuc = {}
+    tumu_sigar = True
+
+    for mobilya_adi, boyutlar in mobilyalar.items():
+        m_en = boyutlar["min_en"]
+        m_boy = boyutlar["min_boy"]
+        # Mobilya her iki yönde de denenebilir
+        sigar = (genislik >= m_en and uzunluk >= m_boy) or \
+                (genislik >= m_boy and uzunluk >= m_en)
+        sonuc[mobilya_adi] = sigar
+        if not sigar:
+            tumu_sigar = False
+
+    return {
+        "tumu_sigar": tumu_sigar,
+        "detay": sonuc,
+    }
+
+
+def analyze_apartment_balance(odalar: list[dict]) -> dict:
+    """Daire oda dağılımının dengesini analiz eder.
+
+    Parametreler:
+        odalar: Oda listesi. Her oda dict olmalı:
+                {"tip": str, "alan": float}
+                Örn: [{"tip": "salon", "alan": 26}, {"tip": "yatak_odasi", "alan": 14}, ...]
+
+    Döndürür:
+        dict: Yaşam/servis/ıslak/sirkülasyon oranları, denge puanı (0-100),
+              iyileştirme önerileri
+    """
+    if not odalar:
+        return {"hata": "Oda listesi boş."}
+
+    toplam_alan = sum(oda["alan"] for oda in odalar)
+    if toplam_alan <= 0:
+        return {"hata": "Toplam alan sıfır veya negatif."}
+
+    # Kategorilere ayır
+    yasam_alani = sum(
+        oda["alan"] for oda in odalar
+        if oda["tip"] in ("salon", "yatak_odasi")
+    )
+    islak_hacim = sum(
+        oda["alan"] for oda in odalar
+        if oda["tip"] in ("banyo", "wc", "mutfak")
+    )
+    sirkulasyon = sum(
+        oda["alan"] for oda in odalar
+        if oda["tip"] in ("antre", "koridor")
+    )
+    dis_alan = sum(
+        oda["alan"] for oda in odalar
+        if oda["tip"] in ("balkon",)
+    )
+
+    # Oranları hesapla
+    oranlar = {
+        "yasam_alani_orani": yasam_alani / toplam_alan,
+        "islak_hacim_orani": islak_hacim / toplam_alan,
+        "sirkulasyon_orani": sirkulasyon / toplam_alan,
+        "dis_alan_orani": dis_alan / toplam_alan,
+    }
+
+    # Her oran için puan hesapla (ideal'e yakınlık)
+    kategori_puanlari = {}
+    oneriler = []
+
+    for kategori, oran_degeri in oranlar.items():
+        hedefler = DAIRE_FONKSIYONEL_ORANLAR.get(kategori, {})
+        ideal = hedefler.get("ideal", 0)
+        min_val = hedefler.get("min", 0)
+        max_val = hedefler.get("max", 1)
+
+        # 0-100 arası puan: ideal'e uzaklık
+        if oran_degeri < min_val:
+            sapma = (min_val - oran_degeri) / (ideal - min_val) if ideal > min_val else 1
+            puan = max(0, 50 - sapma * 50)
+            oneriler.append(
+                f"{kategori}: Oran çok düşük ({oran_degeri:.2f}). "
+                f"Minimum {min_val:.2f}, ideal {ideal:.2f} olmalı."
+            )
+        elif oran_degeri > max_val:
+            sapma = (oran_degeri - max_val) / (max_val - ideal) if max_val > ideal else 1
+            puan = max(0, 50 - sapma * 50)
+            oneriler.append(
+                f"{kategori}: Oran çok yüksek ({oran_degeri:.2f}). "
+                f"Maksimum {max_val:.2f}, ideal {ideal:.2f} olmalı."
+            )
+        else:
+            # min-max arasında, ideal'e yakınlık
+            if oran_degeri <= ideal:
+                mesafe = (ideal - oran_degeri) / (ideal - min_val) if ideal > min_val else 0
+            else:
+                mesafe = (oran_degeri - ideal) / (max_val - ideal) if max_val > ideal else 0
+            puan = 100 - mesafe * 50  # ideal=100, sınırlarda=50
+
+        kategori_puanlari[kategori] = round(puan, 1)
+
+    # Genel denge puanı (ağırlıklı ortalama)
+    agirliklar = {
+        "yasam_alani_orani": 0.35,
+        "islak_hacim_orani": 0.25,
+        "sirkulasyon_orani": 0.20,
+        "dis_alan_orani": 0.20,
+    }
+    genel_puan = sum(
+        kategori_puanlari.get(k, 0) * v
+        for k, v in agirliklar.items()
+    )
+
+    return {
+        "toplam_alan": round(toplam_alan, 2),
+        "oranlar": {k: round(v, 4) for k, v in oranlar.items()},
+        "kategori_puanlari": kategori_puanlari,
+        "genel_denge_puani": round(genel_puan, 1),
+        "oneriler": oneriler if oneriler else ["Daire dağılımı dengeli."],
+    }
+
+
+def get_noise_compatibility(room1_type: str, room2_type: str) -> dict:
+    """İki oda tipinin gürültü uyumluluğunu kontrol eder.
+
+    Parametreler:
+        room1_type: Birinci oda tipi (ör. "yatak_odasi")
+        room2_type: İkinci oda tipi (ör. "mutfak")
+
+    Döndürür:
+        dict: compatible (bool), reason (str), suggestion (str)
+    """
+    def _zon_bul(room_type: str) -> str:
+        for zon, odalar in GURULTU_ZONLARI.items():
+            if room_type in odalar:
+                return zon
+        return "bilinmiyor"
+
+    zon1 = _zon_bul(room1_type)
+    zon2 = _zon_bul(room2_type)
+
+    # Zon sıralama değerleri (sessiz=0, orta=1, gürültülü=2)
+    zon_seviye = {"sessiz": 0, "orta": 1, "gurultulu": 2, "bilinmiyor": 1}
+    seviye1 = zon_seviye.get(zon1, 1)
+    seviye2 = zon_seviye.get(zon2, 1)
+    fark = abs(seviye1 - seviye2)
+
+    if fark == 0:
+        # Aynı zon — uyumlu
+        return {
+            "compatible": True,
+            "reason": f"Her iki oda da aynı gürültü zonunda ({zon1}).",
+            "suggestion": "Yan yana yerleştirme uygundur.",
+        }
+    elif fark == 1:
+        # Komşu zonlar — koşullu uyumlu
+        return {
+            "compatible": True,
+            "reason": (
+                f"{room1_type} ({zon1} zon) ile {room2_type} ({zon2} zon) "
+                f"komşu gürültü zonlarında."
+            ),
+            "suggestion": (
+                "Yan yana yerleştirilebilir, ancak araya ses yalıtımlı duvar "
+                "veya tampon alan (koridor, dolap) eklenmesi önerilir."
+            ),
+        }
+    else:
+        # Zıt zonlar — uyumsuz
+        return {
+            "compatible": False,
+            "reason": (
+                f"{room1_type} ({zon1} zon) ile {room2_type} ({zon2} zon) "
+                f"zıt gürültü zonlarında."
+            ),
+            "suggestion": (
+                "Yan yana yerleştirilmemeli. Araya tampon oda (koridor, antre, dolap) "
+                "konulmalı veya güçlü ses yalıtımı uygulanmalıdır."
+            ),
+        }
