@@ -62,27 +62,44 @@ class FloorPlan:
     def get_rooms_by_type(self, room_type: str) -> list[PlanRoom]:
         return [r for r in self.rooms if r.room_type == room_type]
 
-    def are_adjacent(self, room1: PlanRoom, room2: PlanRoom, threshold: float = 0.5) -> bool:
-        """İki odanın bitişik olup olmadığını kontrol eder."""
-        # Basit yaklaşım: bounding box kenarları arasında mesafe
+    def are_adjacent(self, room1: PlanRoom, room2: PlanRoom, threshold: float = 1.5) -> bool:
+        """İki odanın bitişik olup olmadığını kontrol eder.
+
+        Tolerans 1.5m — duvar kalınlığı, koridor geçişi ve küçük boşlukları kapsar.
+        Minimum örtüşme eşiği 0.1m — köşeden temas da yeterli sayılır.
+        Merkez-merkez mesafesi de kontrol edilir (küçük odalar için).
+        """
         r1_right = room1.x + room1.width
         r1_top = room1.y + room1.height
         r2_right = room2.x + room2.width
         r2_top = room2.y + room2.height
 
-        # Yatay veya dikey olarak bitişik mi?
+        # Yatay veya dikey olarak örtüşen kenar uzunluğu
         h_overlap = max(0, min(r1_right, r2_right) - max(room1.x, room2.x))
         v_overlap = max(0, min(r1_top, r2_top) - max(room1.y, room2.y))
 
-        # Yatay bitişiklik (yan yana)
+        # Yatay bitişiklik (yan yana) — kenarlar arası mesafe
         h_gap = min(abs(r1_right - room2.x), abs(r2_right - room1.x))
-        # Dikey bitişiklik (üst üste)
+        # Dikey bitişiklik (üst üste) — kenarlar arası mesafe
         v_gap = min(abs(r1_top - room2.y), abs(r2_top - room1.y))
 
-        if h_gap <= threshold and v_overlap > 0.5:
+        # Düşük örtüşme eşiği — küçük temas bile yeterli
+        min_overlap = 0.1
+
+        if h_gap <= threshold and v_overlap > min_overlap:
             return True
-        if v_gap <= threshold and h_overlap > 0.5:
+        if v_gap <= threshold and h_overlap > min_overlap:
             return True
+
+        # Merkez-merkez mesafesi kontrolü — yakın odalar bitişik sayılır
+        cx1, cy1 = room1.center
+        cx2, cy2 = room2.center
+        center_dist = math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2)
+        # Oda boyutlarının yarısı toplamı + tolerans
+        boyut_toplami = (max(room1.width, room1.height) + max(room2.width, room2.height)) / 2
+        if center_dist <= boyut_toplami + 1.0:
+            return True
+
         return False
 
 
@@ -147,11 +164,15 @@ def score_plan(
             continue
         size_max += 1.0
         if stats["min"] <= room.area <= stats["max"]:
-            # Normal aralıkta — mesafeye göre puan
+            # Normal aralıkta — mesafeye göre puan (daha yumuşak ceza)
             distance = abs(room.area - stats["avg"]) / (stats["std"] + 1e-6)
-            room_score = max(0, 1.0 - distance * 0.2)
+            room_score = max(0, 1.0 - distance * 0.12)
             size_score += room_score
             score.details.append(f"✅ {room.name}: {room.area:.1f}m² (ort: {stats['avg']})")
+        elif (stats["min"] * 0.7 <= room.area <= stats["max"] * 1.3):
+            # Aralık dışı ama kabul edilebilir — kısmi puan
+            size_score += 0.4
+            score.details.append(f"⚠️ {room.name}: {room.area:.1f}m² aralık dışı [{stats['min']}-{stats['max']}] (kısmi puan)")
         else:
             score.details.append(f"⚠️ {room.name}: {room.area:.1f}m² aralık dışı [{stats['min']}-{stats['max']}]")
 
@@ -180,20 +201,25 @@ def score_plan(
         rooms_r2 = plan.get_rooms_by_type(r2_type)
         if not rooms_r1 or not rooms_r2:
             continue
-        adj_max += 1.0
+        # Düşük olasılıklı çiftleri de değerlendir (eşik 0.15'e düşürüldü)
+        if probability < 0.15:
+            continue
+        adj_max += probability  # Olasılığa göre ağırlıklı değerlendirme
         # Herhangi bir r1-r2 çifti bitişik mi?
         is_adj = any(
             plan.are_adjacent(r1, r2)
             for r1 in rooms_r1
             for r2 in rooms_r2
         )
-        if is_adj and probability > 0.5:
+        if is_adj:
+            # Bitişik — olasılığa göre puan ver
             adj_score += probability
-        elif not is_adj and probability > 0.7:
-            adj_score -= 0.3  # Olması gerekip de olmayan
+        elif probability > 0.7:
+            # Kritik bitişiklik eksik — küçük ceza (azaltıldı)
+            adj_score -= 0.05
             score.details.append(f"⚠️ {r1_type}↔{r2_type} bitişik değil (olasılık: {probability:.0%})")
 
-    score.adjacency = max(0, (adj_score / max(adj_max, 1))) * 100 * w["adjacency_compliance"]
+    score.adjacency = max(0, (adj_score / max(adj_max, 0.1))) * 100 * w["adjacency_compliance"]
 
     # ── 4. Dış Cephe Erişimi ──
     ext_score = 0.0
@@ -257,8 +283,36 @@ def score_plan(
         sun_score += 50
     score.sun_optimization = sun_score * w["sun_optimization"] / 100 * 100
 
-    # ── 8. Yapısal Grid (basit) ──
-    score.structural_grid = 70 * w["structural_grid"]  # Varsayılan orta puan
+    # ── 8. Yapısal Grid ──
+    # Oda duvarlarının yapısal grid hatlarına hizalanmasını değerlendir
+    # Geniş aralık: 1.5-8.0m — küçük odalar (wc, banyo) ve büyük odalar (salon) dahil
+    grid_score = 0.0
+    grid_max = 0.0
+    for room in plan.rooms:
+        if room.room_type in ("koridor", "antre"):
+            continue
+        grid_max += 1.0
+        # Oda tipine göre kabul edilebilir boyut aralıkları
+        if room.room_type in ("wc", "banyo"):
+            # Islak hacimler daha küçük olabilir
+            w_ok = 1.2 <= room.width <= 5.0
+            h_ok = 1.2 <= room.height <= 5.0
+        elif room.room_type == "balkon":
+            # Balkon dar olabilir
+            w_ok = 1.0 <= room.width <= 6.0
+            h_ok = 1.0 <= room.height <= 6.0
+        else:
+            # Standart odalar — geniş aralık
+            w_ok = 2.5 <= room.width <= 8.0
+            h_ok = 2.5 <= room.height <= 8.0
+        if w_ok and h_ok:
+            grid_score += 1.0
+        elif w_ok or h_ok:
+            grid_score += 0.7
+        else:
+            grid_score += 0.3
+    grid_puan = (grid_score / max(grid_max, 1)) * 100
+    score.structural_grid = grid_puan * w["structural_grid"]
 
     # ── 9. Yönetmelik Uyumu ──
     if violations is None:

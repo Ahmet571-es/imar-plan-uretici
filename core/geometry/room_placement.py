@@ -27,6 +27,67 @@ def _get_sun_zone(zones, sun_dir, entrance_side):
         return zones.get("left_front")
 
 
+def _place_wet_rooms_adjacent(wet_slots: list[RoomSlot], zone: dict,
+                               rooms: list):
+    """Islak hacimleri (mutfak, banyo, wc) bitişik olarak yerleştirir.
+
+    Ortak tesisat şaftı oluşturmak için ıslak hacimler yan yana veya
+    üst üste dizilir. Sıralama: mutfak -> banyo -> wc.
+    """
+    if not wet_slots:
+        return
+
+    zx, zy = zone["x"], zone["y"]
+    zw, zh = zone["w"], zone["h"]
+
+    # Islak hacimleri öncelik sırasına koy: mutfak > banyo > wc
+    tip_oncelik = {"mutfak": 0, "banyo": 1, "wc": 2}
+    wet_slots.sort(key=lambda s: tip_oncelik.get(s.room_type, 9))
+
+    # Tüm ıslak hacimleri bölge genişliğince yan yana veya üst üste diz
+    current_y = zy
+
+    for slot in wet_slots:
+        if slot.placed:
+            continue
+
+        remaining_h = zy + zh - current_y
+        if remaining_h < slot.min_width:
+            continue
+
+        # Bölge genişliğini tam kullan — tüm ıslak hacimler aynı x'te
+        room_w = zw
+        room_h = slot.target_area / room_w if room_w > 0 else 3.0
+        room_h = max(slot.min_width, min(room_h, remaining_h))
+
+        # En-boy oranı kontrolü
+        aspect = (min(room_w, room_h) / max(room_w, room_h)
+                  if max(room_w, room_h) > 0 else 0.5)
+        min_aspect = ROOM_ASPECT_RATIOS.get(slot.room_type, {}).get("min", 0.35)
+        if aspect < min_aspect and room_h < room_w:
+            room_h = max(room_h, room_w * min_aspect)
+            room_h = min(room_h, zy + zh - current_y)
+
+        slot.x = round(zx, 2)
+        slot.y = round(current_y, 2)
+        slot.width = round(room_w, 2)
+        slot.height = round(room_h, 2)
+        slot.placed = True
+
+        rooms.append(PlanRoom(
+            name=slot.name, room_type=slot.room_type,
+            x=slot.x, y=slot.y,
+            width=slot.width, height=slot.height,
+            has_exterior_wall=False,
+            facing_direction="",
+        ))
+
+        # Bir sonraki ıslak hacim hemen altına yerleşir
+        current_y += room_h
+
+    zone["remaining_area"] = max(0, zw * (zy + zh - current_y))
+
+
 def _place_rooms_in_zone(slots: list[RoomSlot], zone: dict, rooms: list,
                           exterior_side: str = ""):
     """Bir bölgeye birden fazla odayı sığdırarak yerleştirir."""

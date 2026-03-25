@@ -19,21 +19,154 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Stil ──
+# ── Stil — Profesyonel SaaS görünümü ve mobil uyumluluk ──
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.5rem; }
-    .stMetric > div { background: #f8f9fa; border-radius: 8px; padding: 12px; border-left: 4px solid #1E88E5; }
+    /* Genel düzen */
+    .block-container { padding-top: 1.5rem; max-width: 1200px; }
+
+    /* Metrik kartları — profesyonel görünüm */
+    .stMetric > div {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e8eaf6 100%);
+        border-radius: 10px;
+        padding: 14px;
+        border-left: 4px solid #1565C0;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .stMetric > div:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(21,101,192,0.15);
+    }
+    .stMetric label { color: #546E7A !important; font-size: 0.85rem; letter-spacing: 0.02em; }
+    .stMetric [data-testid="stMetricValue"] { color: #1565C0 !important; font-weight: 700; }
+    .stMetric [data-testid="stMetricDelta"] { font-size: 0.8rem; }
+
+    /* Kenar çubuğu */
     div[data-testid="stSidebar"] { background: #1a1a2e; }
     div[data-testid="stSidebar"] .stMarkdown p,
     div[data-testid="stSidebar"] .stMarkdown h1,
     div[data-testid="stSidebar"] .stMarkdown h2,
     div[data-testid="stSidebar"] .stMarkdown h3 { color: #e0e0e0; }
+
+    /* Bilgi kutuları */
     .success-box { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 12px; border-radius: 4px; margin: 8px 0; }
     .warning-box { background: #fff3e0; border-left: 4px solid #FF9800; padding: 12px; border-radius: 4px; margin: 8px 0; }
     .info-box { background: #e3f2fd; border-left: 4px solid #1E88E5; padding: 12px; border-radius: 4px; margin: 8px 0; }
+
+    /* Buton tutarlılığı */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #1565C0, #1E88E5);
+        border: none;
+        font-weight: 600;
+        transition: opacity 0.15s ease;
+    }
+    .stButton > button[kind="primary"]:hover { opacity: 0.9; }
+
+    /* İndirme butonları — ayırt edici stil */
+    .stDownloadButton > button {
+        border: 1px solid #1565C0;
+        color: #1565C0;
+        font-weight: 500;
+        transition: background 0.15s ease;
+    }
+    .stDownloadButton > button:hover {
+        background: #e3f2fd;
+    }
+
+    /* Tablo ve veri çerçevesi tutarlılığı */
+    .stDataFrame { border-radius: 8px; overflow: hidden; }
+
+    /* Sekmeler — tutarlı renk şeması */
+    .stTabs [data-baseweb="tab-highlight"] { background-color: #1565C0; }
+    .stTabs [data-baseweb="tab"] { font-weight: 500; }
+
+    /* Profesyonel alt bilgi */
+    .app-footer {
+        text-align: center;
+        padding: 1.5rem 0 0.5rem 0;
+        margin-top: 3rem;
+        border-top: 1px solid #e0e0e0;
+        color: #9e9e9e;
+        font-size: 0.75rem;
+        line-height: 1.6;
+    }
+    .app-footer a { color: #1565C0; text-decoration: none; }
+
+    /* Mobil uyumluluk */
+    @media (max-width: 768px) {
+        .block-container { padding: 0.5rem; }
+        div[data-testid="stSidebar"] { width: 250px !important; }
+        .stMetric > div { padding: 8px; font-size: 0.85rem; }
+        h1 { font-size: 1.4rem !important; }
+        h2 { font-size: 1.15rem !important; }
+        /* Mobilde tablo yatay kaydırma */
+        .stDataFrame { overflow-x: auto; }
+    }
+
+    /* Tablet uyumluluk */
+    @media (max-width: 1024px) and (min-width: 769px) {
+        .block-container { padding: 0.75rem; }
+        .stMetric > div { padding: 10px; }
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ── Basit Kimlik Doğrulama Katmanı ──
+# st.secrets içinde AUTH_ENABLED=true ise giriş formu gösterilir.
+# AUTH_ENABLED yoksa veya false ise doğrudan uygulamaya geçilir.
+# İleride Supabase Auth entegrasyonu için taslak görevi görür.
+
+
+def _kimlik_dogrulama_kontrol():
+    """Basit parola kapısı. Secrets'tan kullanıcı adı/parola doğrular.
+
+    Gerekli secrets anahtarları (AUTH_ENABLED=true olduğunda):
+        AUTH_USERNAME: Kullanıcı adı
+        AUTH_PASSWORD: Parola
+    """
+    try:
+        auth_aktif = st.secrets.get("AUTH_ENABLED", False)
+    except Exception:
+        # secrets.toml yoksa veya okunamazsa doğrulamayı atla
+        return True
+
+    # AUTH_ENABLED string olarak da gelebilir
+    if isinstance(auth_aktif, str):
+        auth_aktif = auth_aktif.lower() in ("true", "1", "yes", "evet")
+
+    if not auth_aktif:
+        return True
+
+    # Oturum zaten doğrulanmışsa tekrar sorma
+    if st.session_state.get("_authenticated", False):
+        return True
+
+    # Giriş formu göster
+    st.markdown("## 🔐 Giriş")
+    st.markdown("Bu uygulamaya erişmek için giriş yapmanız gerekmektedir.")
+
+    with st.form("login_form"):
+        kullanici_adi = st.text_input("Kullanıcı Adı", key="_login_user")
+        parola = st.text_input("Parola", type="password", key="_login_pass")
+        giris_btn = st.form_submit_button("Giriş Yap", type="primary")
+
+    if giris_btn:
+        dogru_kullanici = st.secrets.get("AUTH_USERNAME", "")
+        dogru_parola = st.secrets.get("AUTH_PASSWORD", "")
+
+        if kullanici_adi == dogru_kullanici and parola == dogru_parola:
+            st.session_state["_authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Kullanıcı adı veya parola hatalı.")
+
+    return False
+
+
+# Kimlik doğrulama kapısı — geçemezse uygulamanın geri kalanı çalışmaz
+if not _kimlik_dogrulama_kontrol():
+    st.stop()
 
 # ── Otomatik Kalıcılık Sistemi ──
 # Her değişiklikte /tmp'ye otomatik kaydet, sayfa yenilendiğinde otomatik yükle.
@@ -273,7 +406,7 @@ with st.sidebar:
         else:
             st.caption("Grok API key girilmedi")
 
-    st.caption("v1.1 — FAZ 1-7 + Ajan Sistemi + UX")
+    st.caption("v2.0 — Profesyonel SaaS Platformu")
 
     # ── Otomatik Kaydetme Durumu ──
     has_data = st.session_state.get("parsel") is not None or st.session_state.get("imar") is not None
@@ -1347,15 +1480,30 @@ try:
 except Exception:
     pass
 
-# Aktif sayfayı göster
+# Aktif sayfayı göster — hata yakalama ile sarmalanmış
 sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
-sayfa_fonksiyonu()
+try:
+    sayfa_fonksiyonu()
+except Exception as e:
+    st.error(f"Sayfa yüklenirken hata oluştu: {e}")
+    st.info("Lütfen sayfayı yenileyin veya farklı parametrelerle tekrar deneyin.")
 
 # ── Sonraki Adım butonu ──
 try:
     render_next_step_button(st.session_state.aktif_sayfa)
 except Exception:
     pass
+
+# ── Profesyonel alt bilgi — sürüm ve ortam bilgisi ──
+_db_tipi = "PostgreSQL (Supabase)" if os.environ.get("SUPABASE_DB_URL") else "SQLite (yerel)"
+st.markdown(
+    '<div class="app-footer">'
+    '<strong>İmar Plan Üretici v2.0</strong> — Profesyonel İmar Uyumlu Kat Planı Üretim Platformu<br>'
+    f'Veritabanı: {_db_tipi} · Python 3.11 · Streamlit<br>'
+    '© 2026 Tüm hakları saklıdır.'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 # ── Her render sonrası otomatik kaydet ──
 _auto_save()

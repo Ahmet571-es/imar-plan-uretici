@@ -125,9 +125,10 @@ def _create_center_corridor(bw, bh, ox, oy, entrance_side):
         "entrance":  {"x": corr_x - 1.2, "y": oy,
                       "w": corridor_w + 1.2, "h": 2.2,
                       "remaining_area": (corridor_w + 1.2) * 2.2},
-        "wet":       {"x": right_x, "y": oy + bh * 0.30, "w": right_w,
-                      "h": bh * 0.70,
-                      "remaining_area": right_w * bh * 0.70},
+        # Islak hacim bölgesi — en az %35 yükseklik ve 3m genişlik
+        "wet":       {"x": right_x, "y": oy + bh * 0.25, "w": max(right_w, 3.0),
+                      "h": bh * 0.75,
+                      "remaining_area": max(right_w, 3.0) * bh * 0.75},
     }
 
     return corridor, zones
@@ -180,9 +181,10 @@ def _create_l_corridor(bw, bh, ox, oy, entrance_side):
         "entrance": {"x": vert_x - 1.0, "y": oy + bh * 0.40,
                      "w": corridor_w + 1.0, "h": 2.2,
                      "remaining_area": (corridor_w + 1.0) * 2.2},
-        "wet": {"x": right_x, "y": oy + bh * 0.45, "w": right_w,
-                "h": bh * 0.55,
-                "remaining_area": right_w * bh * 0.55},
+        # Islak hacim bölgesi — en az 3m genişlik
+        "wet": {"x": right_x, "y": oy + bh * 0.40, "w": max(right_w, 3.0),
+                "h": bh * 0.60,
+                "remaining_area": max(right_w, 3.0) * bh * 0.60},
     }
 
     return corridor, zones
@@ -229,9 +231,10 @@ def _create_t_corridor(bw, bh, ox, oy, entrance_side):
         "entrance": {"x": vert_x - 1.2, "y": oy, "w": corridor_w + 1.2,
                      "h": 2.2,
                      "remaining_area": (corridor_w + 1.2) * 2.2},
-        "wet": {"x": right_x, "y": oy + bh * 0.35, "w": right_w,
-                "h": bh * 0.65,
-                "remaining_area": right_w * bh * 0.65},
+        # Islak hacim bölgesi — en az 3m genişlik
+        "wet": {"x": right_x, "y": oy + bh * 0.30, "w": max(right_w, 3.0),
+                "h": bh * 0.70,
+                "remaining_area": max(right_w, 3.0) * bh * 0.70},
     }
 
     return corridor, zones
@@ -273,9 +276,10 @@ def _create_short_corridor(bw, bh, ox, oy, entrance_side):
         "entrance": {"x": corr_x - 0.8, "y": oy, "w": corridor_w + 0.8,
                      "h": 2.0,
                      "remaining_area": (corridor_w + 0.8) * 2.0},
-        "wet": {"x": right_x, "y": oy + bh * 0.50, "w": right_w,
-                "h": bh * 0.50,
-                "remaining_area": right_w * bh * 0.50},
+        # Islak hacim bölgesi — en az 3m genişlik
+        "wet": {"x": right_x, "y": oy + bh * 0.45, "w": max(right_w, 3.0),
+                "h": bh * 0.55,
+                "remaining_area": max(right_w, 3.0) * bh * 0.55},
     }
 
     return corridor, zones
@@ -318,9 +322,10 @@ def _create_open_plan_corridor(bw, bh, ox, oy, entrance_side):
         "entrance": {"x": corr_x - 1.0, "y": oy + bh * 0.40,
                      "w": corridor_w + 1.0, "h": 2.0,
                      "remaining_area": (corridor_w + 1.0) * 2.0},
-        "wet": {"x": right_x, "y": oy + bh * 0.45, "w": right_w,
-                "h": bh * 0.55,
-                "remaining_area": right_w * bh * 0.55},
+        # Islak hacim bölgesi — en az 3m genişlik
+        "wet": {"x": right_x, "y": oy + bh * 0.40, "w": max(right_w, 3.0),
+                "h": bh * 0.60,
+                "remaining_area": max(right_w, 3.0) * bh * 0.60},
     }
 
     return corridor, zones

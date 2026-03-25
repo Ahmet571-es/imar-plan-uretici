@@ -142,18 +142,21 @@ def _convert_to_plan_rooms(rooms, bw, bh, ox, oy, sun_dir, entrance_side,
         if r.room_type not in pencere_haric:
             if r.has_exterior_wall:
                 # Dış duvara sahip odalar — dış duvara pencere ekle
+                # Güney cephe daha geniş pencere alır (gün ışığını maksimize eder)
                 if is_bottom:
+                    # Güney cephe — 1.5m yerine daha geniş pencere
+                    pencere_gen = min(2.0, r.width * 0.50)
                     r.windows.append({"wall": "south", "position": 0.5,
-                                      "width": min(1.6, r.width * 0.4)})
+                                      "width": pencere_gen})
                 if is_top:
                     r.windows.append({"wall": "north", "position": 0.5,
-                                      "width": min(1.6, r.width * 0.4)})
+                                      "width": min(1.5, r.width * 0.42)})
                 if is_left:
                     r.windows.append({"wall": "west", "position": 0.5,
-                                      "width": min(1.4, r.height * 0.35)})
+                                      "width": min(1.5, r.height * 0.40)})
                 if is_right:
                     r.windows.append({"wall": "east", "position": 0.5,
-                                      "width": min(1.4, r.height * 0.35)})
+                                      "width": min(1.5, r.height * 0.40)})
 
                 # Banyo/WC → küçük pencere (0.6m)
                 if r.room_type in kucuk_pencere_odalari:

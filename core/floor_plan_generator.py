@@ -50,6 +50,7 @@ from core.geometry.room_placement import (  # noqa: F401
     _place_single_room,
     _find_best_zone,
     _force_place_remaining,
+    _place_wet_rooms_adjacent,
 )
 from core.geometry.plan_finalization import _convert_to_plan_rooms  # noqa: F401
 
@@ -173,7 +174,7 @@ def generate_professional_plan(
                                  exterior_side=sun_direction)
         slots = other_slots + [s for s in salon_mut_slots if not s.placed]
 
-    # 2. Islak hacimleri grupla (ortak şaft bölgesine)
+    # 2. Islak hacimleri grupla (ortak şaft bölgesine — bitişik yerleştir)
     wet_slots = [s for s in slots if s.is_wet and not s.placed]
     dry_slots = [s for s in slots if not s.is_wet and s.room_type != "koridor"
                  and not s.placed]
@@ -185,7 +186,8 @@ def generate_professional_plan(
         ensuite_slots = [s for s in wet_slots if "ebeveyn" in s.name.lower()
                          or "en-suite" in s.name.lower()]
         normal_wet = [s for s in wet_slots if s not in ensuite_slots]
-        _place_rooms_in_zone(normal_wet, wet_zone, rooms, exterior_side="none")
+        # Islak hacimleri bitişik yerleştir — ortak tesisat şaftı için
+        _place_wet_rooms_adjacent(normal_wet, wet_zone, rooms)
 
     # 3. Salon + balkon → güneş cephesine
     sun_zone = _get_sun_zone(layout_zones, sun_direction, entrance_side)

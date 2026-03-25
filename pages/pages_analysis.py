@@ -125,6 +125,67 @@ def sayfa_fizibilite():
         fig_heat = create_sensitivity_heatmap(matris, m_labels, f_labels)
         st.pyplot(fig_heat)
 
+        # ── PDF Rapor İndirme ──
+        st.markdown("---")
+        st.subheader("📄 Fizibilite Raporu")
+        try:
+            from export.feasibility_report import olustur_fizibilite_pdf
+            import tempfile
+
+            # Proje bilgilerini session state'ten topla
+            _imar = st.session_state.get("imar")
+            _hesap = st.session_state.get("hesaplama")
+            _proje_bilgileri = {
+                "proje_adi": "Konut Projesi",
+                "il": st.session_state.get("fiz_il", "Ankara"),
+                "ilce": "-",
+                "ada": "-",
+                "parsel": "-",
+                "parsel_alani": f"{_hesap.parsel_alani:.1f} m²" if _hesap else "-",
+                "kat_sayisi": _imar.kat_adedi if _imar else "-",
+                "taks": _imar.taks if _imar else "-",
+                "kaks": _imar.kaks if _imar else "-",
+            }
+            # Hesaplama sözlüğü
+            _hesap_dict = _hesap.ozet_dict() if _hesap and hasattr(_hesap, "ozet_dict") else {}
+            # Maliyet, gelir ve fizibilite sözlükleri
+            _maliyet_dict = maliyet.to_dict() if hasattr(maliyet, "to_dict") else {}
+            _gelir_dict = {
+                "toplam_gelir": f"₺{gelir.toplam_gelir:,.0f}",
+                "daire_sayisi": len(gelir.daire_gelirleri) if gelir.daire_gelirleri else 0,
+            }
+            _fiz_dict = fiz.to_dict() if hasattr(fiz, "to_dict") else {}
+
+            # Geçici dosyaya PDF oluştur
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                _pdf_path = tmp.name
+
+            olustur_fizibilite_pdf(
+                proje_bilgileri=_proje_bilgileri,
+                hesaplama=_hesap_dict,
+                maliyet=_maliyet_dict,
+                gelir=_gelir_dict,
+                fizibilite=_fiz_dict,
+                output_path=_pdf_path,
+            )
+
+            # PDF dosyasını oku ve indirme butonu göster
+            with open(_pdf_path, "rb") as _f:
+                _pdf_bytes = _f.read()
+
+            if _pdf_bytes:
+                st.download_button(
+                    label="📄 Fizibilite Raporu İndir (PDF)",
+                    data=_pdf_bytes,
+                    file_name="fizibilite_raporu.pdf",
+                    mime="application/pdf",
+                    key="dl_fizibilite_pdf",
+                )
+            else:
+                st.warning("PDF oluşturulamadı. reportlab kurulu olmayabilir.")
+        except Exception as _pdf_err:
+            st.warning(f"PDF rapor oluşturulamadı: {_pdf_err}")
+
         # Monte Carlo simülasyonu
         st.markdown("---")
         st.subheader("🎲 Monte Carlo Risk Simülasyonu")
