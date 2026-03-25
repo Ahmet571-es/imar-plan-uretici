@@ -475,7 +475,7 @@ def sayfa_parsel():
             st.rerun()
 
 
-# Sayfa 2 imported from pages.pages_other
+# Sayfa 2 imported from views.pages_other
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -889,52 +889,52 @@ def sayfa_daire():
 # ═══════════════════════════════════════════════════════════════
 
 def sayfa_plan():
-    from pages.pages_design import sayfa_plan as _f; _f()
+    from views.pages_design import sayfa_plan as _f; _f()
 
 def sayfa_ai():
-    from pages.pages_design import sayfa_ai_tefris as _f; _f()
+    from views.pages_design import sayfa_ai_tefris as _f; _f()
 
 def sayfa_3d():
-    from pages.pages_design import sayfa_3d as _f; _f()
+    from views.pages_design import sayfa_3d as _f; _f()
 
 def sayfa_render():
-    from pages.pages_design import sayfa_render as _f; _f()
+    from views.pages_design import sayfa_render as _f; _f()
 
 def sayfa_fizibilite():
-    from pages.pages_analysis import sayfa_fizibilite as _f; _f()
+    from views.pages_analysis import sayfa_fizibilite as _f; _f()
 
 def sayfa_deprem():
-    from pages.pages_analysis import sayfa_deprem as _f; _f()
+    from views.pages_analysis import sayfa_deprem as _f; _f()
 
 def sayfa_enerji():
-    from pages.pages_analysis import sayfa_enerji as _f; _f()
+    from views.pages_analysis import sayfa_enerji as _f; _f()
 
 def sayfa_gantt():
-    from pages.pages_analysis import sayfa_gantt as _f; _f()
+    from views.pages_analysis import sayfa_gantt as _f; _f()
 
 def sayfa_karsilastir():
-    from pages.pages_analysis import sayfa_karsilastir as _f; _f()
+    from views.pages_analysis import sayfa_karsilastir as _f; _f()
 
 def sayfa_konum():
-    from pages.pages_other import sayfa_konum as _f; _f()
+    from views.pages_other import sayfa_konum as _f; _f()
 
 def sayfa_irtifak():
-    from pages.pages_other import sayfa_irtifak as _f; _f()
+    from views.pages_other import sayfa_irtifak as _f; _f()
 
 def sayfa_ruhsat():
-    from pages.pages_other import sayfa_ruhsat as _f; _f()
+    from views.pages_other import sayfa_ruhsat as _f; _f()
 
 def sayfa_muteahhit():
-    from pages.pages_other import sayfa_muteahhit as _f; _f()
+    from views.pages_other import sayfa_muteahhit as _f; _f()
 
 def sayfa_rapor():
-    from pages.pages_other import sayfa_rapor as _f; _f()
+    from views.pages_other import sayfa_rapor as _f; _f()
 
 def sayfa_firsat():
-    from pages.pages_other import sayfa_firsat as _f; _f()
+    from views.pages_other import sayfa_firsat as _f; _f()
 
 def sayfa_piyasa():
-    from pages.pages_other import sayfa_piyasa as _f; _f()
+    from views.pages_other import sayfa_piyasa as _f; _f()
 
 def sayfa_ajan_panel():
     from agents.agent_dashboard import render_agent_dashboard; render_agent_dashboard()
@@ -957,10 +957,9 @@ def sayfa_crm():
     """CRM Sayfası — Müşteri ve proje takibi."""
     st.header("CRM — Musteri ve Proje Takibi")
 
-    from database.db import get_engine
+    from database.db import engine
     try:
         from sqlalchemy import text
-        engine = get_engine()
     except Exception:
         engine = None
 
