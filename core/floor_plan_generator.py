@@ -88,9 +88,8 @@ def _verify_wet_area_proximity(rooms) -> None:  # noqa: E302
                 en_uzak_cift = (r1.name, r2.name)
 
     if max_mesafe > _ISLAK_HACIM_MAX_MESAFE:
-        logger.warning(
-            "Islak hacim yakınlık uyarısı: %s ile %s arası %.1f m "
-            "(eşik: %.1f m). Ortak tesisat şaftı verimliliği düşebilir.",
+        logger.debug(
+            "Islak hacim yakınlık: %s ile %s arası %.1f m (eşik: %.1f m)",
             en_uzak_cift[0], en_uzak_cift[1], max_mesafe, _ISLAK_HACIM_MAX_MESAFE
         )
 
