@@ -7,6 +7,7 @@ Dual AI Plan Üretim Motoru — Claude Sonnet 4.6 + Grok 4.20 koordinatörü.
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 
 from ai.claude_planner import generate_plans_claude
@@ -66,6 +67,15 @@ def generate_dual_ai_plans(
     """
     result = DualAIResult()
 
+    # Her iki API anahtarı da yoksa kullanıcıyı bilgilendir
+    has_claude_key = bool(claude_api_key or os.environ.get("ANTHROPIC_API_KEY", ""))
+    has_grok_key = bool(grok_api_key or os.environ.get("XAI_API_KEY", ""))
+    if not has_claude_key and not has_grok_key:
+        logger.warning(
+            "Claude ve Grok API anahtarları bulunamadı. "
+            "Demo modunda çalışılıyor — algoritmik planlar üretilecek."
+        )
+
     for iteration in range(1, max_iterations + 1):
         result.iteration = iteration
         logger.info(f"=== İterasyon {iteration}/{max_iterations} ===")
@@ -124,6 +134,10 @@ def generate_dual_ai_plans(
         # ── 4. En iyi 3'ü seç ──
         result.best_plans = select_best_plans(result.all_plans, top_n=3)
 
+        if not result.best_plans:
+            logger.warning(f"İterasyon {iteration}: Hiç plan üretilemedi, sonraki iterasyona geçiliyor.")
+            continue
+
         # ── 5. Çapraz değerlendirme ──
         try:
             cross_review(
@@ -137,7 +151,11 @@ def generate_dual_ai_plans(
         # ── 6. Final puanı hesapla ──
         for alt in result.best_plans:
             own_score = alt.score.total if alt.score else 0
-            alt.final_score = own_score * 0.4 + alt.cross_review_score * 0.6
+            # API anahtarları yoksa çapraz değerlendirme yapılamaz, kendi puanını kullan
+            if alt.cross_review_score > 0:
+                alt.final_score = own_score * 0.4 + alt.cross_review_score * 0.6
+            else:
+                alt.final_score = own_score
 
         # Sırala
         result.best_plans.sort(key=lambda x: x.final_score, reverse=True)

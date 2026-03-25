@@ -253,6 +253,38 @@ def sayfa_3d():
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    # ── Kat bazlı detaylı görüntüleme ──
+    if st.button("📐 Kat Bazlı Görüntüle", key="3d_kat_bazli"):
+        from visualization_3d.building_model import build_single_floor_model
+        for k in range(kat):
+            st.markdown(f"#### Kat {k + 1}")
+            fig_floor = build_single_floor_model(
+                plan=plan_data["plan"],
+                kat_no=k + 1,
+                parsel_coords=parsel_coords if k == 0 else None,
+                show_labels=True,
+                show_legend=(k == 0),
+            )
+            st.plotly_chart(fig_floor, use_container_width=True)
+
+    # ── Kat alanı özet metrikleri ──
+    plan_obj = plan_data["plan"]
+    if plan_obj and plan_obj.rooms:
+        st.markdown("---")
+        st.subheader("📊 Kat Alan Özeti")
+        toplam_net = sum(r.area for r in plan_obj.rooms)
+        salon_alan = sum(r.area for r in plan_obj.rooms if "salon" in r.room_type.lower())
+        yatak_alan = sum(r.area for r in plan_obj.rooms if "yatak" in r.room_type.lower())
+        islak_alan = sum(r.area for r in plan_obj.rooms if r.room_type.lower() in ("banyo", "wc"))
+        diger_alan = toplam_net - salon_alan - yatak_alan - islak_alan
+
+        mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+        mc1.metric("Toplam Net Alan", f"{toplam_net:.1f} m²")
+        mc2.metric("Salon", f"{salon_alan:.1f} m²")
+        mc3.metric("Yatak Odaları", f"{yatak_alan:.1f} m²")
+        mc4.metric("Islak Hacim", f"{islak_alan:.1f} m²")
+        mc5.metric("Diğer", f"{diger_alan:.1f} m²")
+
 
 def sayfa_render():
     """Sayfa 9 — Fotogerçekçi Render."""

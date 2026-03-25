@@ -15,6 +15,8 @@ class FizibiliteSonucu:
     kar_marji: float = 0.0       # (kar / gelir) × 100
     roi: float = 0.0             # (kar / gider) × 100
     basabas_m2_fiyat: float = 0.0
+    karlilik_endeksi: float = 0.0   # gelir / gider oranı (PI — Profitability Index)
+    yatirim_geri_donus_suresi: float = 0.0  # başabaş noktasına ulaşma süresi (ay)
     duyarlilik_matrisi: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -25,6 +27,8 @@ class FizibiliteSonucu:
             "Kâr Marjı (%)": f"{self.kar_marji:.1f}%",
             "Yatırım Getirisi — ROI (%)": f"{self.roi:.1f}%",
             "Başabaş m² Fiyatı (₺)": f"{self.basabas_m2_fiyat:,.0f}",
+            "Kârlılık Endeksi": f"{self.karlilik_endeksi:.2f}",
+            "Yatırım Geri Dönüş Süresi (ay)": f"{self.yatirim_geri_donus_suresi:.1f}",
         }
 
     @property
@@ -52,6 +56,20 @@ def hesapla_fizibilite(
 
     if toplam_satilanabilir_alan > 0:
         sonuc.basabas_m2_fiyat = toplam_gider / toplam_satilanabilir_alan
+
+    # Kârlılık endeksi (PI): gelir / gider oranı
+    if toplam_gider > 0:
+        sonuc.karlilik_endeksi = toplam_gelir / toplam_gider
+
+    # Yatırım geri dönüş süresi (ay): 24 aylık satış dönemi varsayımıyla
+    # Aylık gelir = toplam gelir / 24; geri dönüş = gider / aylık gelir
+    SATIS_DONEMI_AY = 24
+    if toplam_gelir > 0:
+        aylik_gelir = toplam_gelir / SATIS_DONEMI_AY
+        sonuc.yatirim_geri_donus_suresi = toplam_gider / aylik_gelir
+    else:
+        # Gelir yoksa geri dönüş sonsuz — pratikte 0 olarak bırak
+        sonuc.yatirim_geri_donus_suresi = 0.0
 
     return sonuc
 

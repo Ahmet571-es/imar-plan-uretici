@@ -1,5 +1,5 @@
 """
-Yönetmelik Uyumluluk Kontrolü — Daire ve oda düzeyinde validasyon.
+Yönetmelik Uyumluluk Kontrolü — Daire, oda ve parsel/imar düzeyinde validasyon.
 """
 
 from config.turkish_building_codes import (
@@ -7,8 +7,10 @@ from config.turkish_building_codes import (
     validate_room,
     check_elevator_required,
     OTOPARK_KURALLARI,
+    CEKME_MESAFESI_KURALLARI,
 )
 from config.room_defaults import oda_tipi_from_isim
+from utils.constants import MIN_YAPILASMAYA_UYGUN_ALAN, KAT_YUKSEKLIGI
 
 
 def validate_daire(odalar: list[dict], brut_alan: float) -> list[dict]:
@@ -114,5 +116,134 @@ def validate_bina(kat_sayisi: int, daire_sayisi_toplam: int) -> list[dict]:
         "gecerli": True,
         "mesaj": f"ℹ️ {daire_sayisi_toplam} daire → Minimum {min_arac} araçlık otopark gerekli",
     })
+
+    return sonuclar
+
+
+def validate_parsel_imar(parsel_alani: float, imar: dict) -> list[dict]:
+    """Parsel alanı ve imar parametrelerinin uyumluluğunu kontrol eder.
+
+    Planlı Alanlar İmar Yönetmeliği'ne göre aşağıdaki kontrolleri yapar:
+    - TAKS * parsel_alani ile minimum yapılaşma alanı kontrolü (min 30 m²)
+    - KAKS / kat_adedi oranının TAKS'ı aşmaması kontrolü
+    - Ayrık nizamda ön bahçe minimum 5m kontrolü
+    - Ayrık nizamda yan bahçe minimum 3m kontrolü
+
+    Args:
+        parsel_alani: Parsel alanı (m²).
+        imar: İmar parametreleri sözlüğü. Beklenen anahtarlar:
+            - taks (float): Taban Alanı Kat Sayısı
+            - kaks (float): Kat Alanı Kat Sayısı
+            - kat_adedi (int): Kat adedi
+            - insaat_nizami (str): "A", "B" veya "BL"
+            - on_bahce (float): Ön bahçe mesafesi (m)
+            - yan_bahce (float): Yan bahçe mesafesi (m)
+
+    Returns:
+        [{"gecerli": bool, "mesaj": str, "madde": str}, ...] şeklinde kontrol sonuçları.
+    """
+    sonuclar = []
+
+    taks = imar.get("taks", 0.0)
+    kaks = imar.get("kaks", 0.0)
+    kat_adedi = imar.get("kat_adedi", 0)
+    insaat_nizami = imar.get("insaat_nizami", "A")
+    on_bahce = imar.get("on_bahce", 0.0)
+    yan_bahce = imar.get("yan_bahce", 0.0)
+
+    # 1. TAKS * parsel_alani minimum yapılaşma alanı kontrolü (min 30 m²)
+    taban_alani = taks * parsel_alani
+    if taban_alani < MIN_YAPILASMAYA_UYGUN_ALAN and taks > 0:
+        sonuclar.append({
+            "gecerli": False,
+            "mesaj": (
+                f"TAKS ile hesaplanan taban alani ({taban_alani:.1f} m2) "
+                f"minimum yapilasmaya uygun alan ({MIN_YAPILASMAYA_UYGUN_ALAN:.0f} m2) altinda. "
+                f"Parsel alani yetersiz veya TAKS dusuk."
+            ),
+            "madde": "Planli Alanlar Imar Yonetmeligi — Yapi Yasaklari",
+        })
+    else:
+        sonuclar.append({
+            "gecerli": True,
+            "mesaj": (
+                f"TAKS ile hesaplanan taban alani ({taban_alani:.1f} m2) "
+                f"minimum yapilasmaya uygun alan ({MIN_YAPILASMAYA_UYGUN_ALAN:.0f} m2) ustunde."
+            ),
+            "madde": "Planli Alanlar Imar Yonetmeligi — Yapi Yasaklari",
+        })
+
+    # 2. KAKS / kat_adedi <= TAKS kontrolü (kat başı brüt alan > taban alanı kontrolü)
+    if kat_adedi > 0 and taks > 0:
+        kat_basi_emsal = kaks / kat_adedi
+        if kat_basi_emsal > taks:
+            sonuclar.append({
+                "gecerli": False,
+                "mesaj": (
+                    f"KAKS/kat_adedi ({kat_basi_emsal:.3f}) > TAKS ({taks:.3f}). "
+                    f"Kat basi brut alan taban alanini asiyor. "
+                    f"KAKS veya kat adedini kontrol edin."
+                ),
+                "madde": "Planli Alanlar Imar Yonetmeligi — Madde 5: TAKS/KAKS Iliskisi",
+            })
+        else:
+            sonuclar.append({
+                "gecerli": True,
+                "mesaj": (
+                    f"KAKS/kat_adedi ({kat_basi_emsal:.3f}) <= TAKS ({taks:.3f}). "
+                    f"Kat basi brut alan taban alani sinirinda."
+                ),
+                "madde": "Planli Alanlar Imar Yonetmeligi — Madde 5: TAKS/KAKS Iliskisi",
+            })
+    elif kat_adedi <= 0:
+        sonuclar.append({
+            "gecerli": False,
+            "mesaj": "Kat adedi 0 veya negatif olamaz.",
+            "madde": "Genel parametre kontrolu",
+        })
+
+    # 3. Ayrık nizamda ön bahçe minimum 5m kontrolü
+    if insaat_nizami == "A":
+        cekme_kurallari = CEKME_MESAFESI_KURALLARI.get("A", {})
+        on_bahce_min = cekme_kurallari.get("on_bahce_min", 5.0)
+        if on_bahce < on_bahce_min:
+            sonuclar.append({
+                "gecerli": False,
+                "mesaj": (
+                    f"Ayrik nizamda on bahce ({on_bahce:.1f} m) "
+                    f"minimum {on_bahce_min:.1f} m olmalidir."
+                ),
+                "madde": "Planli Alanlar Imar Yonetmeligi — Madde 6: Cekme Mesafeleri",
+            })
+        else:
+            sonuclar.append({
+                "gecerli": True,
+                "mesaj": (
+                    f"Ayrik nizamda on bahce ({on_bahce:.1f} m) >= "
+                    f"minimum {on_bahce_min:.1f} m."
+                ),
+                "madde": "Planli Alanlar Imar Yonetmeligi — Madde 6: Cekme Mesafeleri",
+            })
+
+        # 4. Ayrık nizamda yan bahçe minimum 3m kontrolü
+        yan_bahce_min = cekme_kurallari.get("yan_bahce_min", 3.0)
+        if yan_bahce < yan_bahce_min:
+            sonuclar.append({
+                "gecerli": False,
+                "mesaj": (
+                    f"Ayrik nizamda yan bahce ({yan_bahce:.1f} m) "
+                    f"minimum {yan_bahce_min:.1f} m olmalidir."
+                ),
+                "madde": "Planli Alanlar Imar Yonetmeligi — Madde 6: Cekme Mesafeleri",
+            })
+        else:
+            sonuclar.append({
+                "gecerli": True,
+                "mesaj": (
+                    f"Ayrik nizamda yan bahce ({yan_bahce:.1f} m) >= "
+                    f"minimum {yan_bahce_min:.1f} m."
+                ),
+                "madde": "Planli Alanlar Imar Yonetmeligi — Madde 6: Cekme Mesafeleri",
+            })
 
     return sonuclar

@@ -1,6 +1,15 @@
 """
 Varsayılan Oda Boyutları — Daire tiplerine göre (1+1 ... 5+1).
 Her daire tipi için oda listesi, varsayılan m² değerleri ve min/max aralıkları.
+
+Minimum alan değerleri 3194 sayılı İmar Kanunu ve Planlı Alanlar İmar
+Yönetmeliği'ne uygun olarak belirlenmiştir:
+  - Salon:       min 16 m²
+  - Yatak Odası: min  9 m²
+  - Mutfak:      min  5 m²
+  - Banyo:       min  3.5 m²
+  - WC:          min  1.5 m²
+  - Balkon:      min  2 m²
 """
 
 # ── Daire Tipi Varsayılan Tanımları ──
@@ -11,7 +20,7 @@ DAIRE_SABLONLARI = {
         "brut_alan_aralik": (45, 70),
         "varsayilan_brut": 55,
         "odalar": [
-            {"isim": "Salon",        "tip": "salon",       "varsayilan_m2": 18.0, "min_m2": 12.0, "max_m2": 28.0},
+            {"isim": "Salon",        "tip": "salon",       "varsayilan_m2": 18.0, "min_m2": 16.0, "max_m2": 28.0},
             {"isim": "Yatak Odası",  "tip": "yatak_odasi", "varsayilan_m2": 12.0, "min_m2": 9.0,  "max_m2": 16.0},
             {"isim": "Mutfak",       "tip": "mutfak",      "varsayilan_m2": 7.0,  "min_m2": 5.0,  "max_m2": 12.0},
             {"isim": "Banyo",        "tip": "banyo",       "varsayilan_m2": 4.5,  "min_m2": 3.5,  "max_m2": 6.0},
@@ -23,7 +32,7 @@ DAIRE_SABLONLARI = {
         "brut_alan_aralik": (70, 110),
         "varsayilan_brut": 90,
         "odalar": [
-            {"isim": "Salon",         "tip": "salon",       "varsayilan_m2": 22.0, "min_m2": 15.0, "max_m2": 32.0},
+            {"isim": "Salon",         "tip": "salon",       "varsayilan_m2": 22.0, "min_m2": 16.0, "max_m2": 32.0},
             {"isim": "Yatak Odası 1", "tip": "yatak_odasi", "varsayilan_m2": 14.0, "min_m2": 9.0,  "max_m2": 20.0},
             {"isim": "Yatak Odası 2", "tip": "yatak_odasi", "varsayilan_m2": 12.0, "min_m2": 9.0,  "max_m2": 16.0},
             {"isim": "Mutfak",        "tip": "mutfak",      "varsayilan_m2": 9.0,  "min_m2": 5.0,  "max_m2": 14.0},
@@ -91,6 +100,26 @@ DAIRE_SABLONLARI = {
         ],
     },
 }
+
+
+# ── 3194 Sayılı İmar Kanunu Minimum Alan Gereksinimleri (m²) ──
+# Planlı Alanlar İmar Yönetmeliği'ne göre zorunlu minimum alanlar.
+MINIMUM_ODA_ALANLARI: dict[str, float] = {
+    "salon":       16.0,   # 3194 sayılı İmar Kanunu
+    "yatak_odasi":  9.0,
+    "mutfak":       5.0,
+    "banyo":        3.5,
+    "wc":           1.5,
+    "balkon":       2.0,
+    "antre":        2.5,
+    "koridor":      1.5,
+    "salon_mutfak": 21.0,  # Açık plan: salon (16) + mutfak (5)
+}
+
+
+def get_minimum_alan(oda_tipi: str) -> float:
+    """Oda tipine göre yönetmelikteki minimum alanı döndürür (m²)."""
+    return MINIMUM_ODA_ALANLARI.get(oda_tipi, 0.0)
 
 
 def get_template(daire_tipi: str) -> dict | None:

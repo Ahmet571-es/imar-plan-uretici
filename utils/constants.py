@@ -48,6 +48,20 @@ KORIDOR_IDEAL_GENISLIK = 1.20      # İdeal koridor genişliği
 # ── Ortak Alan Tahmini (m²) ──
 GIRIS_HOLU_ALAN = 10.0             # Zemin kat giriş holü
 SIGINAK_ORAN = 0.05                # Sığınak alanı / kat brüt alanı
+TEKNIK_HACIM_ALAN = 5.0            # Teknik hacimler (elektrik, su, doğalgaz odası vb.)
+OTOPARK_ALAN_ARAC_BASI = 25.0     # Otopark alanı araç başı ortalama (m²)
+
+# ── Emsal Harici (KAKS Dışı) Alan Sabitleri ──
+# Planlı Alanlar İmar Yönetmeliği'ne göre emsal harici alanlar
+EMSAL_HARICI_MERDIVEN = 18.0      # Merdiven evi (m²) — her katta
+EMSAL_HARICI_ASANSOR = 7.0        # Asansör kuyusu (m²) — her katta
+EMSAL_HARICI_GIRIS_HOLU = 10.0    # Giriş holü (m²) — sadece zemin kat
+EMSAL_HARICI_SIGINAK_ORAN = 0.05  # Sığınak — brüt alanın %5'i
+EMSAL_HARICI_TEKNIK_HACIM = 5.0   # Teknik hacimler (m²) — her katta
+EMSAL_HARICI_OTOPARK_ARAC = 25.0  # Otopark — araç başı alan (m²)
+
+# ── Minimum Yapılaşma Alanı ──
+MIN_YAPILASMAYA_UYGUN_ALAN = 30.0 # Çekme sonrası minimum alan (m²)
 
 # ── Balkon ──
 BALKON_KORKULUK_YUKSEKLIK = 1.10   # Balkon korkuluk yüksekliği

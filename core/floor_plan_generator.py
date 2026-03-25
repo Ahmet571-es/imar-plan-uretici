@@ -19,6 +19,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from core.plan_scorer import FloorPlan, PlanRoom
+from config.room_defaults import MINIMUM_ODA_ALANLARI
 from dataset.dataset_rules import (
     ROOM_SIZE_STATS, ROOM_ASPECT_RATIOS, ADJACENCY_PROBABILITY,
     ROOM_EXTERIOR_WALL_PRIORITY, ROOM_PLACEMENT_RULES,
@@ -296,22 +297,41 @@ def _default_room_program(apt_type: str, target: float,
     if en_suite and apt_type in ("3+1", "4+1"):
         room_defs.append(("Ebeveyn Banyosu", "banyo", 0.04))
 
+    # Toplam oda yüzdelerinin %100'ü aşmadığını doğrula
+    toplam_oran = sum(r for _, _, r in room_defs)
+    if toplam_oran > 1.0:
+        # Oranları normalize et — %100'e sığdır
+        room_defs = [(n, t, r / toplam_oran) for n, t, r in room_defs]
+
     return [{"isim": n, "tip": t, "m2": round(target * r, 1)}
             for n, t, r in room_defs]
 
 
 def _create_room_slots(room_program: list[dict]) -> list[RoomSlot]:
-    """Oda programından slot'lar oluşturur."""
+    """Oda programından slot'lar oluşturur.
+
+    Hedef alan, yönetmelikteki minimum alanın altındaysa otomatik olarak
+    minimum alana yükseltilir (3194 sayılı İmar Kanunu).
+    """
     slots = []
     wet_types = {"banyo", "wc", "mutfak"}
     for rd in room_program:
         tip = rd.get("tip", "diger")
         if tip == "koridor":
             continue  # Koridor ayrıca oluşturulur
+
+        hedef_alan = rd.get("m2", 10)
+
+        # Minimum alan kontrolü — İmar Kanunu zorunlu alt sınırları
+        effective_tip = tip if tip != "salon_mutfak" else "salon_mutfak"
+        min_alan = MINIMUM_ODA_ALANLARI.get(effective_tip, 0.0)
+        if hedef_alan < min_alan:
+            hedef_alan = min_alan
+
         slots.append(RoomSlot(
             name=rd.get("isim", "Oda"),
             room_type=tip if tip != "salon_mutfak" else "salon",
-            target_area=rd.get("m2", 10),
+            target_area=hedef_alan,
             priority=ROOM_EXTERIOR_WALL_PRIORITY.get(
                 tip if tip != "salon_mutfak" else "salon", 5),
             is_wet=tip in wet_types,

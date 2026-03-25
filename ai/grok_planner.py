@@ -54,8 +54,23 @@ def generate_plans_grok(
     api_key: str = "",
     plan_count: int = 2,
     previous_feedback: str | None = None,
+    timeout: float = 30.0,
 ) -> list[dict]:
-    """Grok 4.20 API ile plan üretir."""
+    """Grok 4.20 API ile plan üretir.
+
+    Args:
+        polygon_coords: Yapılaşma alanı koordinatları.
+        apartment_program: Daire programı.
+        dataset_rules: Veri seti kuralları.
+        sun_direction: En iyi güneş yönü.
+        api_key: Grok/xAI API anahtarı.
+        plan_count: Üretilecek plan sayısı.
+        previous_feedback: Önceki iterasyondan geri bildirim.
+        timeout: API isteği zaman aşımı süresi (saniye, varsayılan 30s).
+
+    Returns:
+        [{"floor_plan": FloorPlan, "reasoning": str}, ...]
+    """
     if not api_key:
         api_key = os.getenv("XAI_API_KEY", "")
 
@@ -65,7 +80,11 @@ def generate_plans_grok(
 
     try:
         from openai import OpenAI
-        client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
+        client = OpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=api_key,
+            timeout=timeout,
+        )
 
         rules_summary = _summarize_rules(dataset_rules)
         system = SYSTEM_PROMPT.format(dataset_rules=rules_summary)

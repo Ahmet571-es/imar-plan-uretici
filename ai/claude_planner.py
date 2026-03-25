@@ -6,9 +6,43 @@ Claude API ile kat planı alternatiflerini üretir.
 import json
 import logging
 import os
+import time
 from core.plan_scorer import FloorPlan, PlanRoom
 
 logger = logging.getLogger(__name__)
+
+# ── İstek hız sınırlama takibi ──
+_rate_limit_tracker = {
+    "toplam_istek": 0,
+    "son_istek_zamani": 0.0,
+    "dakika_basi_limit": 10,
+}
+
+
+def get_rate_limit_stats() -> dict:
+    """Mevcut hız sınırlama istatistiklerini döndürür."""
+    return dict(_rate_limit_tracker)
+
+
+def _check_rate_limit() -> bool:
+    """Hız sınırını kontrol eder. Sınır aşılmışsa True döndürür."""
+    now = time.time()
+    elapsed = now - _rate_limit_tracker["son_istek_zamani"]
+    # Dakika başı limit kontrolü — son istekten 60/limit saniye geçmesi gerekir
+    min_interval = 60.0 / _rate_limit_tracker["dakika_basi_limit"]
+    if elapsed < min_interval and _rate_limit_tracker["toplam_istek"] > 0:
+        logger.warning(
+            f"Hız sınırı: son istekten {elapsed:.1f}s geçti, "
+            f"minimum {min_interval:.1f}s beklenmeli."
+        )
+        return True
+    return False
+
+
+def _record_request():
+    """Yapılan isteği kaydet."""
+    _rate_limit_tracker["toplam_istek"] += 1
+    _rate_limit_tracker["son_istek_zamani"] = time.time()
 
 SYSTEM_PROMPT = """Sen uzman bir Türk mimarısın. Verilen kısıtlamalara göre konut daire kat planı tasarla.
 
@@ -83,6 +117,11 @@ def generate_plans_claude(
         return _generate_demo_plans(polygon_coords, apartment_program, plan_count)
 
     try:
+        # Hız sınırı kontrolü
+        if _check_rate_limit():
+            logger.warning("Hız sınırı aşıldı, demo plana düşülüyor.")
+            return _generate_demo_plans(polygon_coords, apartment_program, plan_count)
+
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -93,6 +132,7 @@ def generate_plans_claude(
             polygon_coords, apartment_program, sun_direction, plan_count, previous_feedback
         )
 
+        _record_request()
         response = client.messages.create(
             model="claude-sonnet-4-6-20250514",
             max_tokens=4096,

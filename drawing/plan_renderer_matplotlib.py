@@ -109,6 +109,19 @@ def render_floor_plan(
                 ha="center", va="center",
                 fontsize=7, color="#666", style="italic", zorder=10)
 
+        # Pencere/zemin oranı — penceresi olan odalar için göster
+        if room.windows and room.area > 0:
+            from utils.constants import PENCERE_YUKSEKLIK
+            toplam_pencere_alan = sum(
+                w.get("width", 1.2) * PENCERE_YUKSEKLIK
+                for w in room.windows
+            )
+            oran = toplam_pencere_alan / room.area
+            ax.text(cx, cy - 0.70,
+                    f"P/Z: %{oran * 100:.0f}",
+                    ha="center", va="center",
+                    fontsize=5.5, color="#1565C0", zorder=10)
+
         # Ölçü çizgileri
         if show_dimensions:
             _draw_dimensions_smart(ax, room, dim_offset_tracker)
