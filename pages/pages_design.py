@@ -205,8 +205,10 @@ def sayfa_ai_tefris():
 
 
 def sayfa_3d():
-    """Sayfa 8 — 3D Görselleştirme."""
+    """Sayfa 8 — 3D Görselleştirme + Plotly Canvas → Grok Imagine Pipeline."""
     from visualization_3d.building_model import build_3d_model
+    from visualization_3d.plotly_capture import capture_plotly_via_export, render_capture_button_html
+    import streamlit.components.v1 as components
 
     st.header("🏗️ 3D Görselleştirme")
 
@@ -241,7 +243,272 @@ def sayfa_3d():
         exploded=exploded,
         selected_floor=selected_floor,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="chart_3d_main")
+
+    # ── 3D Model → Grok Imagine Fotorealistik Render Pipeline ──
+    st.markdown("---")
+    st.subheader("3D Model → Fotorealistik AI Render")
+    st.caption(
+        "3D modelin mevcut görünümünü yakalayıp Grok Imagine ile fotorealistik render'a dönüştürün. "
+        "Modeli istediğiniz açıya döndürün, ardından yakalayıp render edin."
+    )
+
+    grok_key = st.session_state.get("grok_api_key", "")
+
+    # Yakalama yöntemi seçimi
+    capture_method = st.radio(
+        "Yakalama Yöntemi",
+        ["Sunucu tarafı (Otomatik)", "Tarayıcı tarafı (Manuel)"],
+        horizontal=True,
+        key="3d_capture_method",
+        help="Sunucu tarafı: Plotly'nin mevcut kamera açısını sunucuda render eder. "
+             "Tarayıcı tarafı: Tarayıcınızdaki canlı görünümü yakalar (Plotly.js gerekir).",
+    )
+
+    # Stil ve prompt ayarları
+    from prompts.style_configs import STYLE_VARIANTS, LIGHTING_OPTIONS
+
+    render_col1, render_col2 = st.columns(2)
+    with render_col1:
+        ai_stil = st.selectbox(
+            "Mimari Stil",
+            list(STYLE_VARIANTS.keys()),
+            format_func=lambda x: STYLE_VARIANTS[x]["isim"],
+            key="3d_ai_stil",
+        )
+    with render_col2:
+        ai_aydinlatma = st.select_slider(
+            "Aydınlatma",
+            LIGHTING_OPTIONS,
+            value="Golden hour warm sunset",
+            key="3d_ai_aydinlatma",
+        )
+
+    ek_prompt = st.text_input(
+        "Ek talimat (opsiyonel)",
+        placeholder="Örn: Cam cephe ekle, çevrede ağaçlar olsun, gece görünümü...",
+        key="3d_ek_prompt",
+    )
+
+    if capture_method == "Sunucu tarafı (Otomatik)":
+        # ── Yöntem 1: Sunucu tarafı yakalama (Kaleido ile) ──
+        if st.button("3D Görünümü Yakala ve AI Render Oluştur", type="primary", key="btn_3d_capture_render"):
+            if not grok_key:
+                st.warning("Sidebar'dan Grok/xAI API Key girin.")
+            else:
+                with st.spinner("3D model görüntüsü yakalanıyor..."):
+                    captured_b64 = capture_plotly_via_export(fig, width=1920, height=1080)
+
+                if not captured_b64:
+                    st.error(
+                        "Plotly görüntü yakalama başarısız. Kaleido paketi gerekli: "
+                        "`pip install kaleido`. Alternatif olarak 'Tarayıcı tarafı' yöntemini deneyin."
+                    )
+                else:
+                    st.success("3D görüntü yakalandı!")
+
+                    # Yakalanan görüntüyü önizle
+                    import base64 as b64module
+                    preview_bytes = b64module.b64decode(captured_b64)
+                    with st.expander("Yakalanan 3D Görüntü (Önizleme)", expanded=True):
+                        st.image(preview_bytes, use_container_width=True)
+
+                    # Grok Imagine ile fotorealistik render
+                    _run_3d_to_photorealistic(
+                        captured_b64, grok_key, ai_stil, ai_aydinlatma, ek_prompt,
+                        kat, imar, parsel,
+                    )
+    else:
+        # ── Yöntem 2: Tarayıcı tarafı yakalama (JS) ──
+        st.info(
+            "1) Yukarıdaki 3D modeli istediğiniz açıya döndürün\n"
+            "2) Aşağıdaki 'Mevcut Görünümü Yakala' butonuna tıklayın\n"
+            "3) Yakalanan görüntü otomatik olarak AI render'a gönderilecek"
+        )
+
+        # JS yakalama bileşeni
+        components.html(render_capture_button_html(1920, 1080), height=60)
+
+        # Kullanıcı JS ile yakaladıysa, dosya yükleme ile de alabilsin
+        uploaded = st.file_uploader(
+            "Veya 3D ekran görüntüsünü yükleyin",
+            type=["png", "jpg", "jpeg"],
+            key="3d_screenshot_upload",
+            help="Tarayıcı yakalama çalışmazsa, 3D modelin ekran görüntüsünü alıp buraya yükleyin.",
+        )
+
+        if uploaded is not None:
+            import base64 as b64module
+            img_bytes = uploaded.read()
+            captured_b64 = b64module.b64encode(img_bytes).decode("utf-8")
+
+            st.image(img_bytes, caption="Yüklenen 3D görüntü", use_container_width=True)
+
+            if st.button("Yüklenen Görüntüden AI Render Oluştur", type="primary", key="btn_3d_upload_render"):
+                if not grok_key:
+                    st.warning("Sidebar'dan Grok/xAI API Key girin.")
+                else:
+                    _run_3d_to_photorealistic(
+                        captured_b64, grok_key, ai_stil, ai_aydinlatma, ek_prompt,
+                        kat, imar, parsel,
+                    )
+
+    # ── Son render sonucu gösterimi ──
+    if st.session_state.get("3d_render_result"):
+        result = st.session_state["3d_render_result"]
+        st.markdown("---")
+        st.subheader("Fotorealistik Render Sonucu")
+
+        if result.get("image_data_b64"):
+            import base64 as b64module
+            img = b64module.b64decode(result["image_data_b64"])
+            st.image(img, use_container_width=True)
+
+            # Düzenleme
+            edit_text = st.text_input(
+                "Render'ı düzenle",
+                placeholder="Örn: Cephe rengini beyaz yap, daha fazla yeşillik ekle...",
+                key="3d_render_edit",
+            )
+            if st.button("Düzenle", key="btn_3d_edit") and edit_text and grok_key:
+                from ai.grok_imagine import edit_image
+                with st.spinner("Düzenleme uygulanıyor..."):
+                    edit_result = edit_image(
+                        image_url=result.get("url", ""),
+                        edit_prompt=edit_text,
+                        api_key=grok_key,
+                        image_base64=result["image_data_b64"] if not result.get("url") else "",
+                    )
+                if edit_result.success and (edit_result.image_data or edit_result.image_url):
+                    img_show = edit_result.image_data if edit_result.image_data else edit_result.image_url
+                    st.image(img_show, use_container_width=True)
+                    st.success("Düzenleme tamamlandı!")
+                    # Güncelle
+                    from utils.image_utils import image_bytes_to_base64
+                    st.session_state["3d_render_result"] = edit_result.to_dict()
+                    if edit_result.image_data:
+                        st.session_state["3d_render_result"]["image_data_b64"] = image_bytes_to_base64(edit_result.image_data)
+                    # Render geçmişine ekle
+                    _save_render_to_history(edit_result)
+                else:
+                    st.error(f"Düzenleme hatası: {edit_result.error}")
+
+
+def _run_3d_to_photorealistic(
+    captured_b64: str,
+    grok_key: str,
+    mimari_stil_key: str,
+    aydinlatma: str,
+    ek_prompt: str,
+    kat_sayisi: int,
+    imar,
+    parsel,
+):
+    """Yakalanan 3D görüntüyü Grok Imagine ile fotorealistik render'a dönüştürür.
+
+    Args:
+        captured_b64: Yakalanan görüntünün base64 verisi.
+        grok_key: xAI API anahtarı.
+        mimari_stil_key: Mimari stil anahtarı.
+        aydinlatma: Aydınlatma açıklaması.
+        ek_prompt: Kullanıcının ek talimatı.
+        kat_sayisi: Bina kat sayısı.
+        imar: İmar parametreleri nesnesi.
+        parsel: Parsel nesnesi.
+    """
+    from ai.grok_imagine import edit_image
+    from prompts.style_configs import STYLE_VARIANTS
+    from utils.image_utils import image_bytes_to_base64
+
+    stil = STYLE_VARIANTS.get(mimari_stil_key, STYLE_VARIANTS["modern_minimalist"])
+
+    # Edit prompt oluştur — 3D wireframe'den fotorealistik render'a
+    edit_prompt_parts = [
+        "Transform this 3D architectural wireframe model into a photorealistic",
+        f"architectural exterior visualization of a {kat_sayisi}-story residential building.",
+        f"Architectural style: {stil['mimari_stil']}.",
+        f"Facade materials: {stil['cephe_malzemesi']}.",
+        f"Lighting: {aydinlatma}.",
+        "Add realistic building materials, textures, windows with reflections,",
+        "balconies, entrance, and urban context with sidewalks and vegetation.",
+        "Professional architectural rendering quality, photorealistic materials,",
+        "accurate proportions matching the 3D model silhouette.",
+    ]
+
+    if ek_prompt:
+        edit_prompt_parts.append(f"Additional instructions: {ek_prompt}")
+
+    full_edit_prompt = " ".join(edit_prompt_parts)
+
+    with st.spinner("Grok Imagine fotorealistik render üretiyor... (15-45 saniye)"):
+        result = edit_image(
+            image_url="",
+            edit_prompt=full_edit_prompt,
+            api_key=grok_key,
+            image_base64=captured_b64,
+        )
+
+    if result.success and (result.image_data or result.image_url):
+        img_show = result.image_data if result.image_data else result.image_url
+        st.image(img_show, use_container_width=True)
+        st.success("3D Model → Fotorealistik render tamamlandı!")
+
+        # Session state'e kaydet
+        render_data = result.to_dict()
+        if result.image_data and not render_data.get("image_data_b64"):
+            render_data["image_data_b64"] = image_bytes_to_base64(result.image_data)
+        render_data["render_type"] = "3d_to_photorealistic"
+        render_data["style"] = stil["isim"]
+        st.session_state["3d_render_result"] = render_data
+
+        # Global render geçmişine de ekle
+        result.render_type = "3d_to_photorealistic"
+        result.style = stil["isim"]
+        _save_render_to_history(result)
+    else:
+        st.error(f"Render hatası: {result.error}")
+
+        # Hata durumunda text-to-image fallback öner
+        st.info(
+            "Image editing başarısız oldu. Alternatif olarak text-to-image denensin mi?"
+        )
+        if st.button("Text-to-Image ile Render Oluştur", key="btn_3d_fallback"):
+            from ai.grok_imagine import generate_image
+            from prompts.exterior_prompts import build_exterior_prompt
+
+            # Bina boyutlarını hesapla
+            hesap = st.session_state.get("hesaplama")
+            if hesap and hesap.cekme_polygonu:
+                from utils.geometry_helpers import polygon_bounds_boyutlar
+                taban_en, taban_boy = polygon_bounds_boyutlar(hesap.cekme_polygonu)
+            else:
+                taban_en, taban_boy = 20.0, 15.0
+
+            prompt = build_exterior_prompt(
+                kat_sayisi=kat_sayisi,
+                taban_en=taban_en,
+                taban_boy=taban_boy,
+                mimari_stil_key=mimari_stil_key,
+                aydinlatma=aydinlatma,
+            )
+            if ek_prompt:
+                prompt += f"\nAdditional: {ek_prompt}"
+
+            with st.spinner("Text-to-image render üretiliyor..."):
+                fallback_result = generate_image(
+                    prompt=prompt,
+                    api_key=grok_key,
+                    render_type="3d_fallback",
+                    style=stil["isim"],
+                )
+
+            if fallback_result.success and (fallback_result.image_data or fallback_result.image_url):
+                img_show = fallback_result.image_data if fallback_result.image_data else fallback_result.image_url
+                st.image(img_show, use_container_width=True)
+                st.success("Text-to-image render tamamlandı!")
+                _save_render_to_history(fallback_result)
+            else:
+                st.error(f"Fallback render de başarısız: {fallback_result.error}")
 
 
 def sayfa_render():

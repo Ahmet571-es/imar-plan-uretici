@@ -20,6 +20,9 @@ folium>=0.15.0
 streamlit-folium>=0.18.0
 pyproj>=3.6.0
 
+# ═══ Plotly Export ═══
+kaleido>=0.2.1
+
 # ═══ CAD / Export ═══
 ezdxf>=1.1.0
 svgwrite>=1.4.0
