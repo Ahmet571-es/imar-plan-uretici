@@ -165,20 +165,51 @@ def sayfa_deprem():
         s = st.session_state.deprem_result
         st.markdown("---")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Risk Seviyesi", s.risk_seviyesi)
         col2.metric("Ss (Kısa Periyot)", f"{s.ss:.3f}")
         col3.metric("S1 (1sn Periyot)", f"{s.s1:.3f}")
+        col4.metric("Deprem Düzeyi", getattr(s, "dd_duzeyi", "—").split(" (")[0] if hasattr(s, "dd_duzeyi") else "—")
+
+        # Tasarım parametreleri
+        sds = getattr(s, "tasarim_sds", 0)
+        sd1 = getattr(s, "tasarim_sd1", 0)
+        r_val = getattr(s, "yapi_davranis_r", 0)
+        dep_kn = getattr(s, "tahmini_deprem_kuvveti_kn", 0)
+        if sds > 0:
+            col_a, col_b, col_c, col_d = st.columns(4)
+            col_a.metric("SDS (Tasarım)", f"{sds:.3f}", help="TBDY Madde 2.3")
+            col_b.metric("SD1 (Tasarım)", f"{sd1:.3f}", help="TBDY Madde 2.3")
+            col_c.metric("R Katsayısı", f"{r_val:.1f}", help="TBDY Tablo 4.1")
+            col_d.metric("Deprem Kuvveti", f"{dep_kn:.0f} kN", help="V = SDS × W / R")
 
         st.subheader("🏗️ Taşıyıcı Sistem Önerisi")
-        st.info(f"**{s.tasiyici_sistem_onerisi}**\n\nKolon Grid: {s.kolon_grid_onerisi}\n\nPerde: {s.perde_onerisi}")
+        temel = getattr(s, "temel_tipi_onerisi", "")
+        kolon = getattr(s, "kolon_boyut_onerisi", "")
+        perde = getattr(s, "perde_orani_min", 0)
+        perf = getattr(s, "performans_hedefi", "")
 
-        st.subheader("📋 Detaylar")
+        st.info(
+            f"**Taşıyıcı Sistem:** {s.tasiyici_sistem_onerisi}\n\n"
+            f"**Kolon Grid:** {s.kolon_grid_onerisi} | **Kolon Boyutu:** {kolon}\n\n"
+            f"**Temel Tipi:** {temel} | **Min Perde Oranı:** %{perde:.1f}\n\n"
+            f"**Performans Hedefi:** {perf} | **Perde:** {s.perde_onerisi}"
+        )
+
+        # TBDY referansları
+        tbdy_refs = getattr(s, "tbdy_referanslar", [])
+        if tbdy_refs:
+            with st.expander("📚 TBDY 2018 Referansları"):
+                for ref in tbdy_refs:
+                    st.text(f"  {ref}")
+
+        st.subheader("📋 Tüm Parametreler")
         df = pd.DataFrame({"Parametre": list(s.to_dict().keys()), "Değer": list(s.to_dict().values())})
         st.dataframe(df, hide_index=True, use_container_width=True)
 
-        for d in s.detaylar:
-            st.markdown(f"  {d}")
+        with st.expander("📝 Detaylı Notlar"):
+            for d in s.detaylar:
+                st.markdown(f"  {d}")
 
 
 def sayfa_enerji():
@@ -245,10 +276,32 @@ def sayfa_enerji():
         ax_e.set_title("Bina Enerji Sınıfı", fontweight="bold")
         st.pyplot(fig_e)
 
+        # Derinleştirilmiş enerji metrikleri
+        co2 = getattr(s, "co2_emisyonu_kg_m2", 0)
+        tasarruf = getattr(s, "tasarruf_orani", 0)
+        birincil = getattr(s, "birincil_enerji_kwh_m2", 0)
+        if co2 > 0 or tasarruf > 0:
+            col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+            col_e1.metric("CO₂ Emisyonu", f"{co2:.1f} kg/m²/yıl")
+            col_e2.metric("Tasarruf Oranı", f"%{tasarruf*100:.0f}",
+                          help="Yalıtımsız binaya göre enerji tasarrufu")
+            col_e3.metric("Birincil Enerji", f"{birincil:.0f} kWh/m²")
+            sogutma_m = getattr(s, "sogutma_maliyet_tl", 0)
+            isitma_m = getattr(s, "isitma_maliyet_tl", 0)
+            col_e4.metric("Soğutma Maliyeti", f"₺{sogutma_m:,.0f}")
+
+        # Isı kaybı dağılımı
+        kayip = getattr(s, "isi_kayip_dagilimi", {})
+        if kayip:
+            with st.expander("🌡️ Isı Kaybı Dağılımı"):
+                for kalem, oran in kayip.items():
+                    st.text(f"  {kalem}: {oran}")
+
         st.subheader("💡 Öneriler")
         for o in s.oneriler:
             st.markdown(f"  {o}")
 
+        st.subheader("📋 Tüm Parametreler")
         df = pd.DataFrame({"Parametre": list(s.to_dict().keys()), "Değer": list(s.to_dict().values())})
         st.dataframe(df, hide_index=True, use_container_width=True)
 
