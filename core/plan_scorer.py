@@ -271,7 +271,7 @@ def score_plan(
     # WC ve koridor hariç her oda pencere almalıdır
     pzo_score = 0.0
     pzo_max = 0.0
-    pencere_haric_tipler = ("wc", "koridor")
+    pencere_haric_tipler = ("wc", "koridor", "antre")
     for room in plan.rooms:
         if room.room_type in pencere_haric_tipler:
             continue
