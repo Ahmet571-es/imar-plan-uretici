@@ -78,9 +78,10 @@ def create_radar_chart(parseller: list[ParselOzet]) -> go.Figure:
         enerji_map = {"A": 100, "B": 85, "C": 70, "D": 50, "E": 30, "F": 15, "G": 5}
         enerji_norm = enerji_map.get(p.enerji_sinifi, 50)
         gunes_norm = min(100, p.gunes_skoru * 10) if p.gunes_skoru else 50
-        deprem_map = {"Düşük": 90, "Orta": 60, "Yüksek": 30, "Çok Yüksek": 10}
+        # Sıralama önemli: "Çok Yüksek" önce kontrol edilmeli ("Yüksek" içerdiği için)
+        deprem_map = [("Çok Yüksek", 10), ("Yüksek", 30), ("Orta", 60), ("Düşük", 90)]
         deprem_norm = 50
-        for k, v in deprem_map.items():
+        for k, v in deprem_map:
             if k in p.deprem_riski:
                 deprem_norm = v
                 break

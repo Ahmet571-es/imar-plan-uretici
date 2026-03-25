@@ -139,6 +139,7 @@ def hesapla(parsel_polygon: Polygon, imar: ImarParametreleri) -> HesaplamaSonucu
     sonuc.toplam_ortak_alan = (
         sonuc.merdiven_alani
         + sonuc.asansor_alani
+        + sonuc.giris_holu_alani
         + sonuc.siginak_alani
     )
 

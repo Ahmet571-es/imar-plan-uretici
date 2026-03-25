@@ -12,6 +12,14 @@ def sayfa_konum():
 
     st.header("🗺️ Konum & Çevre Analizi")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Projenizin konumunu belirleyin ve güneş analizini yapın.
+    Enlem/boylam girin veya hazır şehirlerden seçin. Güneş analizi her cephenin yıllık güneş saatini hesaplar
+    ve salon/yatak odası yerleşimi için öneriler sunar.
+    </div>
+    """, unsafe_allow_html=True)
+
     col1, col2 = st.columns(2)
     with col1:
         lat = st.number_input("Enlem", 36.0, 42.5, 39.93, step=0.01, key="loc_lat")
@@ -69,6 +77,14 @@ def sayfa_irtifak():
     from legal.kat_irtifaki import olustur_kat_irtifaki, taslak_to_text
 
     st.header("📜 Kat İrtifakı / Mülkiyet Belge Taslağı")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Kat irtifakı belge taslağı oluşturun.
+    Proje bilgilerini girin, sistem daire bazlı arsa payı dağılımını ve irtifak belge metnini otomatik oluşturur.
+    Bu bir taslaktır; resmi belge için noter onayı gerekir.
+    </div>
+    """, unsafe_allow_html=True)
 
     bina = st.session_state.get("bina_programi")
     parsel = st.session_state.get("parsel")
@@ -129,6 +145,14 @@ def sayfa_ruhsat():
     from legal.ruhsat_paketi import RUHSAT_KONTROL_LISTESI, olustur_alan_hesap, alan_hesap_to_text, gerekli_yetki_sinifi, YETKI_SINIFLARI
 
     st.header("🏛️ Yapı Ruhsatı Başvuru Paketi")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne göreceksiniz?</b> Yapı ruhsatı başvurusu için gereken belge ve kontrol listesi.
+    Toplam inşaat alanına göre gerekli müteahhit yetki sınıfı otomatik belirlenir.
+    Alan hesap tablosu ve ruhsat kontrol listesi oluşturulur.
+    </div>
+    """, unsafe_allow_html=True)
 
     hesap = st.session_state.get("hesaplama")
     imar = st.session_state.get("imar")
@@ -205,6 +229,13 @@ def sayfa_rapor():
     import os
 
     st.header("📄 Rapor & Dışa Aktarma")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Tüm analiz sonuçlarını PDF rapor, DXF (AutoCAD), SVG formatlarında dışa aktarabilirsiniz.
+    Fizibilite, deprem, enerji gibi analizleri tamamladıysanız bunlar rapora otomatik dahil edilir.
+    </div>
+    """, unsafe_allow_html=True)
 
     hesap = st.session_state.get("hesaplama")
     imar = st.session_state.get("imar")

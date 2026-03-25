@@ -101,7 +101,12 @@ def generate_plans_claude(
         )
 
         response_text = response.content[0].text
-        plans_data = json.loads(response_text)
+        # Markdown code block içinden JSON çıkar
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0]
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0]
+        plans_data = json.loads(response_text.strip())
         return _parse_plans(plans_data)
 
     except Exception as e:

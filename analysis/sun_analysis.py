@@ -4,7 +4,6 @@ Parselin enlem/boylamından güneş yolu, her cephenin yıllık güneş saati ve
 """
 
 import math
-from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
 
@@ -80,7 +79,6 @@ def analyze_sun(
 
 def _estimate_annual_sun_hours(latitude: float) -> float:
     """Enlem bazlı yıllık güneş saati hesabı — astronomi formülleri ile."""
-    import math
     # Yıl boyunca her gün için gündüz saatini hesapla
     toplam_saat = 0
     for gun in range(1, 366):

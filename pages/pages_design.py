@@ -16,8 +16,16 @@ def sayfa_plan():
     st.header("📋 Kat Planı Üretimi")
 
     if st.session_state.get("hesaplama") is None:
-        st.warning("⚠️ Önce hesaplama adımını tamamlayın.")
+        st.warning("⚠️ Önce hesaplama adımını tamamlayın. Soldaki menüden **[4] Hesaplama Sonuçları** sayfasına gidin.")
         return
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu adımda ne yapacaksınız?</b> Daire tipi ve g\u00fcne\u015f y\u00f6n\u00fcn\u00fc se\u00e7in, ard\u0131ndan plan \u00fcretim butonuna t\u0131klay\u0131n.
+    Sistem birden fazla alternatif plan \u00fcretir ve puanlar. <b>Profesyonel \u00dcretim</b> sekmesi API key olmadan \u00e7al\u0131\u015f\u0131r.
+    <b>AI Destekli</b> sekmesi Claude veya Grok API ile daha detayl\u0131 planlar \u00fcretir.
+    </div>
+    """, unsafe_allow_html=True)
 
     hesap = st.session_state.hesaplama
     imar = st.session_state.imar
@@ -170,6 +178,13 @@ def sayfa_ai_tefris():
 
     st.header("🤖 AI İyileştirme & Mobilya Yerleştirme")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu adımda ne yapacaksınız?</b> Seçtiğiniz kat planına otomatik mobilya yerleştirme yapabilirsiniz.
+    Salon, yatak odası, mutfak gibi her odaya uygun mobilyalar otomatik konumlandırılır.
+    </div>
+    """, unsafe_allow_html=True)
+
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
     )
@@ -210,6 +225,13 @@ def sayfa_3d():
 
     st.header("🏗️ 3D Görselleştirme")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne göreceksiniz?</b> Binanızın interaktif 3D modeli. Fare ile döndürebilir, yakınlaştırabilirsiniz.
+    Çatı tipini değiştirebilir, patlak görünümle her katı ayrı ayrı inceleyebilirsiniz.
+    </div>
+    """, unsafe_allow_html=True)
+
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
     )
@@ -217,7 +239,7 @@ def sayfa_3d():
     parsel = st.session_state.get("parsel")
 
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce bir kat planı üretin ve seçin.")
+        st.warning("⚠️ Önce bir kat planı üretin ve seçin. Soldaki menüden **[6] Kat Planı Üretimi** sayfasına gidin.")
         return
 
     col1, col2, col3, col4 = st.columns(4)
@@ -249,6 +271,14 @@ def sayfa_render():
     from ai.render_generator import RENDER_STYLES
 
     st.header("🎨 Fotogerçekçi İç Mekan Render")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Seçtiğiniz odanın fotogerçekçi iç mekan görselini AI ile oluşturabilirsiniz.
+    Oda ve stil seçin, ardından render butonuna tıklayın. Bu özellik Grok/xAI API key gerektirir.
+    API key yoksa render promptu metin olarak gösterilir.
+    </div>
+    """, unsafe_allow_html=True)
 
     plan_data = st.session_state.get("selected_plan") or (
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None

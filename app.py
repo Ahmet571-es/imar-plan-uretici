@@ -10,7 +10,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamlit as st
 import numpy as np
 import pandas as pd
-import math
 
 st.set_page_config(
     page_title="İmar Plan Üretici",
@@ -32,6 +31,11 @@ st.markdown("""
     .success-box { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 12px; border-radius: 4px; margin: 8px 0; }
     .warning-box { background: #fff3e0; border-left: 4px solid #FF9800; padding: 12px; border-radius: 4px; margin: 8px 0; }
     .info-box { background: #e3f2fd; border-left: 4px solid #1E88E5; padding: 12px; border-radius: 4px; margin: 8px 0; }
+    .step-badge { display: inline-block; background: #1E88E5; color: white; border-radius: 50%;
+                  width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 13px;
+                  font-weight: bold; margin-right: 6px; }
+    .help-tip { background: #f0f7ff; border-left: 3px solid #1E88E5; padding: 10px 14px;
+                border-radius: 4px; margin: 8px 0; font-size: 14px; color: #333; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -60,10 +64,8 @@ def _auto_save():
                 "on_bahce": im.on_bahce, "yan_bahce": im.yan_bahce, "arka_bahce": im.arka_bahce,
                 "siginak_gerekli": im.siginak_gerekli, "otopark_gerekli": im.otopark_gerekli,
             }
-        if st.session_state.get("claude_api_key"):
-            data["claude_api_key"] = st.session_state.claude_api_key
-        if st.session_state.get("grok_api_key"):
-            data["grok_api_key"] = st.session_state.grok_api_key
+        # NOT: API key'ler güvenlik nedeniyle autosave'e kaydedilmez.
+        # Kullanıcı her oturumda sidebar'dan girebilir veya secrets.toml kullanabilir.
 
         with open(_AUTOSAVE_PATH, "w") as f:
             _json.dump(data, f, ensure_ascii=False)
@@ -95,12 +97,7 @@ def _auto_load():
         if "aktif_sayfa" in data:
             st.session_state.aktif_sayfa = data["aktif_sayfa"]
 
-        if "claude_api_key" in data and not st.session_state.get("claude_api_key"):
-            st.session_state.claude_api_key = data["claude_api_key"]
-            _os.environ["ANTHROPIC_API_KEY"] = data["claude_api_key"]
-        if "grok_api_key" in data and not st.session_state.get("grok_api_key"):
-            st.session_state.grok_api_key = data["grok_api_key"]
-            _os.environ["XAI_API_KEY"] = data["grok_api_key"]
+        # API key'ler autosave'den yüklenmez — güvenlik nedeniyle.
 
     except Exception:
         pass
@@ -274,10 +271,17 @@ with st.sidebar:
         else:
             st.caption("Grok API key girilmedi")
 
-    st.caption("v1.1 — FAZ 1-7 + Ajan Sistemi + UX")
+    st.caption("v1.2 — FAZ 1-7 + Ajan Sistemi + UX")
 
-    # ── Otomatik Kaydetme Durumu ──
-    has_data = st.session_state.get("parsel") is not None or st.session_state.get("imar") is not None
+    # ── İlerleme Durumu ──
+    has_parsel = st.session_state.get("parsel") is not None
+    has_imar = st.session_state.get("imar") is not None
+    has_hesap = st.session_state.get("hesaplama") is not None
+    has_bina = st.session_state.get("bina_programi") is not None
+    adim_sayisi = sum([has_parsel, has_imar, has_hesap, has_bina])
+    st.progress(adim_sayisi / 4, text=f"Temel adımlar: {adim_sayisi}/4 tamamlandı")
+
+    has_data = has_parsel or has_imar
     if has_data:
         st.caption("💾 Veriler otomatik kaydediliyor")
 
@@ -309,6 +313,25 @@ def sayfa_parsel():
     from core.parcel import Parsel
 
     st.header("📍 Parsel Geometrisi Girişi")
+
+    # İlk kullanım hoşgeldin mesajı
+    if st.session_state.get("parsel") is None and st.session_state.get("imar") is None:
+        st.markdown("""
+        <div class="help-tip">
+        <b>Hoş geldiniz!</b> Bu uygulama ile arsanız için imar uyumlu kat planı üretebilir,
+        3D görselleştirme yapabilir ve mali fizibilite analizi çıkarabilirsiniz.<br><br>
+        <b>Nasıl başlanır?</b> Aşağıdan parsel ölçülerinizi girin (eni ve boyu yeterli).
+        Uygulama sizi adım adım yönlendirecektir.
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="help-tip">
+    <b>Bu adımda ne yapacaksınız?</b> Arsanızın ölçülerini girin.
+    Dikdörtgen arsa için sadece en ve boy yeterli. Düzensiz arsalar için koordinat ya da kenar uzunluğu girebilirsiniz.
+    TKGM sekmesinden ada/parsel numarası ile otomatik sorgulama da yapabilirsiniz.
+    </div>
+    """, unsafe_allow_html=True)
 
     tab_manuel, tab_tkgm = st.tabs(["✏️ Manuel Giriş", "🌐 TKGM Otomatik"])
 
@@ -478,10 +501,19 @@ def sayfa_imar():
     st.header("📐 İmar Bilgileri Girişi")
 
     if st.session_state.parsel is None:
-        st.warning("⚠️ Önce parsel oluşturun. [Parsel Girişi] sayfasına gidin.")
+        st.warning("⚠️ Önce parsel oluşturun. Soldaki menüden **[1] Parsel Girişi** sayfasına gidin.")
         return
 
-    st.markdown("Belediye e-imar uygulamasından alınan yapılaşma bilgilerini girin.")
+    st.markdown("""
+    <div class="help-tip">
+    <b>Bu adımda ne yapacaksınız?</b> Belediyenin imar planında arsanız için belirlediği yapılaşma kurallarını girin.<br>
+    <b>TAKS:</b> Binanın zemine oturabileceği alan oranı (genelde 0.30-0.40).<br>
+    <b>KAKS:</b> Toplam inşaat alanı oranı (genelde 1.20-2.00). Kat adedi ile çarpılmış haldir.<br>
+    <b>Çekme mesafeleri:</b> Binanın parsel sınırlarından ne kadar içeride kalması gerektiği (metre).<br>
+    Bu bilgileri belediye e-imar uygulamasından veya imar durumu belgesinden öğrenebilirsiniz.
+    Emin değilseniz varsayılan değerler Türkiye ortalamasını yansıtır.
+    </div>
+    """, unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
@@ -583,11 +615,19 @@ def sayfa_hesaplama():
     st.header("📊 Otomatik Hesaplama Sonuçları")
 
     if st.session_state.parsel is None:
-        st.warning("⚠️ Önce parsel oluşturun.")
+        st.warning("⚠️ Önce parsel oluşturun. Soldaki menüden **[1] Parsel Girişi** sayfasına gidin.")
         return
     if st.session_state.imar is None:
-        st.warning("⚠️ Önce imar bilgilerini girin.")
+        st.warning("⚠️ Önce imar bilgilerini girin. Soldaki menüden **[3] İmar Bilgileri** sayfasına gidin.")
         return
+
+    st.markdown("""
+    <div class="help-tip">
+    <b>Bu sayfa otomatik hesaplama yapar.</b> Parsel alanı ve imar kurallarından yola çıkarak
+    ne kadar inşaat yapılabileceğini, merdiven/asansör gibi ortak alanları ve dairelere kalacak net alanı hesaplar.
+    Herhangi bir şey girmenize gerek yok — sonuçlar otomatik oluşturulur.
+    </div>
+    """, unsafe_allow_html=True)
 
     parsel = st.session_state.parsel
     imar = st.session_state.imar
@@ -679,8 +719,16 @@ def sayfa_daire():
     st.header("🏠 Daire Bölümleme")
 
     if st.session_state.hesaplama is None:
-        st.warning("⚠️ Önce hesaplama adımını tamamlayın.")
+        st.warning("⚠️ Önce hesaplama adımını tamamlayın. Soldaki menüden **[4] Hesaplama Sonuçları** sayfasına gidin.")
         return
+
+    st.markdown("""
+    <div class="help-tip">
+    <b>Bu adımda ne yapacaksınız?</b> Her katta kaç daire olacağını ve daire tipini (1+1, 2+1, 3+1 vb.) seçin.
+    Sistem otomatik olarak oda dağılımını yapacaktır. İsterseniz oda alanlarını tablodan düzenleyebilirsiniz.
+    AI sekmesinden doğal dille de daire programı oluşturabilirsiniz (API key gerektirir).
+    </div>
+    """, unsafe_allow_html=True)
 
     sonuc = st.session_state.hesaplama
     imar = st.session_state.imar
@@ -945,7 +993,15 @@ def sayfa_veri():
 
 def sayfa_crm():
     """CRM Sayfası — Müşteri ve proje takibi."""
-    st.header("CRM — Musteri ve Proje Takibi")
+    st.header("👥 CRM — Müşteri ve Proje Takibi")
+
+    st.markdown("""
+    <div class="help-tip">
+    <b>Bu sayfada ne yapacaksınız?</b> Müşterilerinizi ve projelerinizi takip edin.
+    Müşteri ekleyin, durumlarını güncelleyin ve Kanban görünümünde takip edin.
+    Veriler tarayıcı oturumunda tutulur; kalıcı depolama için veritabanı entegrasyonu gerekir.
+    </div>
+    """, unsafe_allow_html=True)
 
     from database.db import get_engine
     try:
@@ -1048,7 +1104,15 @@ def sayfa_crm():
 
 def sayfa_workflow():
     """Is Akisi Motoru — Gorev zamanlama ve workflow editor."""
-    st.header("Is Akisi Motoru")
+    st.header("⚙️ İş Akışı Motoru")
+
+    st.markdown("""
+    <div class="help-tip">
+    <b>Bu sayfada ne yapacaksınız?</b> Proje iş akışını planlayın.
+    Hazır şablonlardan birini seçin veya kendi görevlerinizi ekleyin.
+    Her görevin süresi ve bağımlılığı belirtilerek zaman çizelgesi oluşturulur.
+    </div>
+    """, unsafe_allow_html=True)
 
     # Hazır şablonlar
     st.subheader("Hazir Is Akisi Sablonlari")

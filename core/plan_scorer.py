@@ -251,7 +251,7 @@ def score_plan(
         sun_score += 50
     if balkon_rooms and any(r.facing_direction == sun_best_direction for r in balkon_rooms):
         sun_score += 50
-    score.sun_optimization = sun_score * w["sun_optimization"] / 100 * 100
+    score.sun_optimization = sun_score * w["sun_optimization"]
 
     # ── 8. Yapısal Grid (basit) ──
     score.structural_grid = 70 * w["structural_grid"]  # Varsayılan orta puan

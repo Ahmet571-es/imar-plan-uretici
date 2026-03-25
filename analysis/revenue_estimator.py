@@ -73,11 +73,14 @@ def hesapla_gelir(
             m2_fiyat=m2_satis_fiyati,
         )
 
-        # Kat primi
-        if dg.kat == 1:
+        # Kat primi (çakışma koruması: tek katlı binada zemin primi uygulanır)
+        if dg.kat == kat_sayisi and dg.kat == 1:
+            # Tek katlı bina — zemin ve çatı aynı kat, zemin primi uygulanır
             dg.kat_primi = KAT_PRIMI["zemin"]
         elif dg.kat == kat_sayisi:
             dg.kat_primi = KAT_PRIMI["cati_kati"]
+        elif dg.kat == 1:
+            dg.kat_primi = KAT_PRIMI["zemin"]
         elif dg.kat >= kat_sayisi - 1:
             dg.kat_primi = KAT_PRIMI["ust_kat"]
         else:

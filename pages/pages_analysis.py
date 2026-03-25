@@ -19,6 +19,14 @@ def sayfa_fizibilite():
 
     st.header("💰 Mali Fizibilite Analizi")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Projenizin mali fizibilitesini hesaplayın.
+    Arsa maliyeti, yapı kalitesi ve m² satış fiyatını girin. Sistem toplam maliyet, gelir, kâr marjı ve yatırım getirisini (ROI) otomatik hesaplar.
+    Duyarlılık analizi ile farklı senaryoları görebilirsiniz.
+    </div>
+    """, unsafe_allow_html=True)
+
     hesap = st.session_state.get("hesaplama")
     imar = st.session_state.get("imar")
     bina = st.session_state.get("bina_programi")
@@ -132,6 +140,14 @@ def sayfa_deprem():
 
     st.header("🔬 Deprem Risk Analizi")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Projenizin konumuna göre deprem risk analizi yapın.
+    TBDY 2018 standardına uygun olarak spektral ivme, zemin sınıfı etkisi ve taşıyıcı sistem önerisi oluşturulur.
+    Enlem/boylam girildiğinde AFAD verilerinden otomatik sorgu yapılmaya çalışılır.
+    </div>
+    """, unsafe_allow_html=True)
+
     col1, col2 = st.columns(2)
     with col1:
         lat = st.number_input("Enlem", 36.0, 42.5, 39.93, step=0.01, key="dep_lat")
@@ -173,6 +189,13 @@ def sayfa_enerji():
     from analysis.energy_performance import enerji_performans_hesapla, ENERJI_SINIFLARI
 
     st.header("⚡ Enerji Performans Tahmini")
+
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> Binanızın enerji performans sınıfını (A-G) tahmin edin.
+    Yalıtım tipi, cam seçimi ve ısıtma sistemini seçin. Yıllık ısıtma/soğutma enerji tüketimi ve enerji sınıfı hesaplanır.
+    </div>
+    """, unsafe_allow_html=True)
 
     hesap = st.session_state.get("hesaplama")
     imar = st.session_state.get("imar")
@@ -237,6 +260,13 @@ def sayfa_gantt():
 
     st.header("📅 İnşaat Süresi Tahmini")
 
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> İnşaat süresinin Gantt diyagramını oluşturun.
+    Kat sayısını ve başlangıç tarihini girin. Kaba inşaat, ince işler, mekanik tesisat gibi tüm iş kalemleri otomatik planlanır.
+    </div>
+    """, unsafe_allow_html=True)
+
     imar = st.session_state.get("imar")
 
     col1, col2, col3 = st.columns(3)
@@ -275,7 +305,12 @@ def sayfa_karsilastir():
 
     st.header("🔄 Parsel Karşılaştırma")
 
-    st.info("2-3 parselin fizibilite karşılaştırması. Parametreleri girin ve karşılaştırın.")
+    st.markdown("""
+    <div style="background:#f0f7ff; border-left:3px solid #1E88E5; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:14px;">
+    <b>Bu sayfada ne yapacaksınız?</b> 2 veya 3 farklı parseli yan yana karşılaştırın.
+    Her parsel için alan, TAKS/KAKS, maliyet, gelir ve kâr marjını girin. Radar grafiği ile güçlü/zayıf yönleri görsel olarak karşılaştırabilirsiniz.
+    </div>
+    """, unsafe_allow_html=True)
 
     parsel_count = st.radio("Parsel Sayısı", [2, 3], horizontal=True, key="kars_count")
     parseller = []
