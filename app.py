@@ -150,22 +150,41 @@ if "bina_programi" not in st.session_state:
 # Sayfa yenilendiğinde otomatik yükle
 _auto_load()
 
+# ── Adım durum kontrolü (sidebar ikonları için) ──
+_s = st.session_state
+_adim_durum = {
+    "1_parsel": _s.get("parsel") is not None,
+    "3_imar": _s.get("imar") is not None,
+    "4_hesaplama": _s.get("hesaplama") is not None,
+    "5_daire": _s.get("bina_programi") is not None,
+    "6_plan": bool(_s.get("generated_plans")),
+}
+
+def _durum_ikon(key):
+    """Adım tamamlandıysa yeşil tik, yoksa boş daire."""
+    return "✅" if _adim_durum.get(key) else "⬜"
+
 # ── Sidebar Navigasyon ──
 with st.sidebar:
     st.markdown("## 🏗️ İmar Plan Üretici")
+
+    # Hızlı durum göstergesi
+    tamamlanan = sum(1 for v in _adim_durum.values() if v)
+    st.caption(f"Temel adımlar: {tamamlanan}/5 tamamlandı")
+    st.progress(tamamlanan / 5)
     st.markdown("---")
 
     st.markdown("### 📐 PROJE TASARIM")
     sayfa_secenekleri = {
-        "1_parsel":       "📍 [1] Parsel Girişi",
+        "1_parsel":       f"{_durum_ikon('1_parsel')} [1] Parsel Girişi",
         "2_konum":        "🗺️ [2] Konum & Çevre",
-        "3_imar":         "📐 [3] İmar Bilgileri",
-        "4_hesaplama":    "📊 [4] Hesaplama Sonuçları",
-        "5_daire":        "🏠 [5] Daire Bölümleme",
-        "6_plan":         "📋 [6] Kat Planı Üretimi",
-        "7_ai":           "🤖 [7] AI İyileştirme & Tefriş",
+        "3_imar":         f"{_durum_ikon('3_imar')} [3] İmar Bilgileri",
+        "4_hesaplama":    f"{_durum_ikon('4_hesaplama')} [4] Hesaplama",
+        "5_daire":        f"{_durum_ikon('5_daire')} [5] Daire Bölümleme",
+        "6_plan":         f"{_durum_ikon('6_plan')} [6] Kat Planı Üretimi",
+        "7_ai":           "🪑 [7] Mobilya Yerleştirme",
         "8_3d":           "🏗️ [8] 3D Görselleştirme",
-        "9_render":       "🎨 [9] Fotogerçekçi Render",
+        "9_render":       "🎨 [9] Render",
     }
     for key, label in sayfa_secenekleri.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True,
@@ -173,13 +192,13 @@ with st.sidebar:
             st.session_state.aktif_sayfa = key
             st.rerun()
 
-    st.markdown("### 💰 ANALİZ & FİZİBİLİTE")
+    st.markdown("### 💰 ANALİZ")
     analiz_sayfalari = {
-        "10_fizibilite":  "💰 [10] Mali Fizibilite",
-        "11_deprem":      "🔬 [11] Deprem Risk",
-        "12_enerji":      "⚡ [12] Enerji Performans",
+        "10_fizibilite":  "💰 [10] Fizibilite",
+        "11_deprem":      "🔬 [11] Deprem",
+        "12_enerji":      "⚡ [12] Enerji",
         "13_gantt":       "📅 [13] İnşaat Süresi",
-        "14_karsilastir": "🔄 [14] Parsel Karşılaştırma",
+        "14_karsilastir": "🔄 [14] Karşılaştırma",
     }
     for key, label in analiz_sayfalari.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True,
@@ -187,12 +206,12 @@ with st.sidebar:
             st.session_state.aktif_sayfa = key
             st.rerun()
 
-    st.markdown("### 📜 HUKUK & BELGE")
+    st.markdown("### 📜 BELGE & RAPOR")
     hukuk_sayfalari = {
         "15_irtifak":     "📜 [15] Kat İrtifakı",
         "16_ruhsat":      "🏛️ [16] Yapı Ruhsatı",
-        "17_muteahhit":   "👷 [17] Müteahhit Eşleştirme",
-        "18_rapor":       "📄 [18] Rapor & Dışa Aktarma",
+        "17_muteahhit":   "👷 [17] Müteahhit",
+        "18_rapor":       "📄 [18] Rapor & Export",
     }
     for key, label in hukuk_sayfalari.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True,
@@ -200,26 +219,13 @@ with st.sidebar:
             st.session_state.aktif_sayfa = key
             st.rerun()
 
-    st.markdown("### ⚙️ OTOMASYON")
-    otomasyon_sayfalari = {
-        "19_whatsapp":    "📱 [19] WhatsApp Bot",
-        "20_veri":        "🔄 [20] Veri Güncelleme",
+    st.markdown("### ⚙️ DİĞER")
+    diger_sayfalari = {
         "21_crm":         "👥 [21] CRM",
-        "22_workflow":    "⚙️ [22] İş Akışı Motoru",
+        "22_workflow":    "⚙️ [22] İş Akışı",
+        "23_ajan_panel":  "🤖 [23] Ajanlar",
     }
-    for key, label in otomasyon_sayfalari.items():
-        if st.button(label, key=f"nav_{key}", use_container_width=True,
-                     type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
-            st.session_state.aktif_sayfa = key
-            st.rerun()
-
-    st.markdown("### 🤖 AJANLAR")
-    ajan_sayfalari = {
-        "23_ajan_panel":  "🤖 [23] Ajan Kontrol Paneli",
-        "24_firsat":      "🔍 [24] Fırsat Merkezi",
-        "25_piyasa":      "📈 [25] Piyasa İstihbarat",
-    }
-    for key, label in ajan_sayfalari.items():
+    for key, label in diger_sayfalari.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
             st.session_state.aktif_sayfa = key
@@ -228,8 +234,9 @@ with st.sidebar:
     st.markdown("---")
 
     # ── API Key Ayarları ──
-    with st.expander("🔑 API Ayarları", expanded=False):
-        # Önce secrets.toml'dan, yoksa session_state'ten oku
+    with st.expander("🔑 API Ayarları (opsiyonel)", expanded=False):
+        st.caption("API key olmadan tüm temel özellikler çalışır. "
+                   "AI plan üretimi ve render için key girin.")
         default_claude = ""
         default_grok = ""
         try:
@@ -245,13 +252,13 @@ with st.sidebar:
             "Claude API Key",
             value=st.session_state.get("claude_api_key", default_claude),
             type="password", key="input_claude_key",
-            help="Anthropic Claude API anahtarı — plan üretimi ve analiz için",
+            help="AI plan üretimi için — anthropic.com adresinden alınır",
         )
         grok_key = st.text_input(
             "Grok/xAI API Key",
             value=st.session_state.get("grok_api_key", default_grok),
             type="password", key="input_grok_key",
-            help="xAI Grok API anahtarı — bağımsız plan üretimi ve render için",
+            help="AI render için — x.ai adresinden alınır",
         )
 
         if claude_key:
@@ -261,15 +268,12 @@ with st.sidebar:
             st.session_state.grok_api_key = grok_key
             import os; os.environ["XAI_API_KEY"] = grok_key
 
-        # Durum göstergesi
         if claude_key:
-            st.success("✅ Claude API aktif")
-        else:
-            st.caption("Claude API key girilmedi")
+            st.success("✅ Claude aktif")
         if grok_key:
-            st.success("✅ Grok API aktif")
-        else:
-            st.caption("Grok API key girilmedi")
+            st.success("✅ Grok aktif")
+        if not claude_key and not grok_key:
+            st.info("ℹ️ Key girilmedi — temel özellikler çalışır")
 
     st.caption("v1.2 — FAZ 1-7 + Ajan Sistemi + UX")
 
@@ -314,22 +318,60 @@ def sayfa_parsel():
 
     st.header("📍 Parsel Geometrisi Girişi")
 
-    # İlk kullanım hoşgeldin mesajı
+    # İlk kullanım hoşgeldin mesajı — detaylı rehber
     if st.session_state.get("parsel") is None and st.session_state.get("imar") is None:
         st.markdown("""
-        <div class="help-tip">
-        <b>Hoş geldiniz!</b> Bu uygulama ile arsanız için imar uyumlu kat planı üretebilir,
-        3D görselleştirme yapabilir ve mali fizibilite analizi çıkarabilirsiniz.<br><br>
-        <b>Nasıl başlanır?</b> Aşağıdan parsel ölçülerinizi girin (eni ve boyu yeterli).
-        Uygulama sizi adım adım yönlendirecektir.
+        <div style="background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+                    border-radius: 12px; padding: 24px; margin-bottom: 20px;
+                    border: 1px solid #bbdefb;">
+        <h3 style="color:#1565C0; margin-top:0;">Hoş geldiniz! 👋</h3>
+        <p style="font-size:15px; color:#333;">
+        Bu uygulama ile arsanız için <b>imar uyumlu kat planı</b> üretebilir, <b>3D görselleştirme</b> yapabilir
+        ve <b>mali fizibilite analizi</b> çıkarabilirsiniz.
+        </p>
+        <p style="font-size:14px; color:#555; margin-bottom:12px;">
+        <b>5 kolay adımda projenizi oluşturun:</b>
+        </p>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <tr style="background:#e8f5e9;">
+            <td style="padding:8px; border-radius:4px;"><b>Adım 1</b></td>
+            <td style="padding:8px;">Arsanızın ölçülerini girin (en × boy yeterli)</td>
+            <td style="padding:8px; color:#888;">Bu sayfa</td>
+        </tr>
+        <tr>
+            <td style="padding:8px;"><b>Adım 2</b></td>
+            <td style="padding:8px;">İmar bilgilerini girin (TAKS, KAKS, çekme mesafeleri)</td>
+            <td style="padding:8px; color:#888;">Sayfa 3</td>
+        </tr>
+        <tr style="background:#e8f5e9;">
+            <td style="padding:8px;"><b>Adım 3</b></td>
+            <td style="padding:8px;">Hesaplama sonuçlarını görün (otomatik)</td>
+            <td style="padding:8px; color:#888;">Sayfa 4</td>
+        </tr>
+        <tr>
+            <td style="padding:8px;"><b>Adım 4</b></td>
+            <td style="padding:8px;">Daire sayısı ve tipini belirleyin</td>
+            <td style="padding:8px; color:#888;">Sayfa 5</td>
+        </tr>
+        <tr style="background:#e8f5e9;">
+            <td style="padding:8px;"><b>Adım 5</b></td>
+            <td style="padding:8px;">Kat planı üretin ve sonuçları inceleyin</td>
+            <td style="padding:8px; color:#888;">Sayfa 6+</td>
+        </tr>
+        </table>
+        <p style="font-size:13px; color:#777; margin-top:12px; margin-bottom:0;">
+        💡 <b>API key gerekmez.</b> Tüm temel özellikler API key olmadan çalışır.
+        AI destekli plan üretimi ve render için sol menüdeki API Ayarları'ndan key girebilirsiniz.
+        </p>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="help-tip">
-    <b>Bu adımda ne yapacaksınız?</b> Arsanızın ölçülerini girin.
-    Dikdörtgen arsa için sadece en ve boy yeterli. Düzensiz arsalar için koordinat ya da kenar uzunluğu girebilirsiniz.
-    TKGM sekmesinden ada/parsel numarası ile otomatik sorgulama da yapabilirsiniz.
+    <b>Adım 1 — Arsa Ölçüleri:</b> Aşağıdan arsanızın ölçülerini girin.
+    <b>Dikdörtgen arsa</b> için sadece en ve boy yeterli.
+    Düzensiz arsalar için koordinat veya kenar uzunluğu girebilirsiniz.
+    <b>TKGM</b> sekmesinden ada/parsel numarası ile otomatik sorgulama da yapabilirsiniz.
     </div>
     """, unsafe_allow_html=True)
 
@@ -1290,22 +1332,42 @@ SAYFA_MAP = {
     "25_piyasa":      sayfa_piyasa,
 }
 
-# ── Progress indicator ──
-try:
-    from utils.navigation import render_progress_bar, render_next_step_button
-    render_progress_bar()
-except Exception:
-    pass
-
 # Aktif sayfayı göster
 sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
 sayfa_fonksiyonu()
 
-# ── Sonraki Adım butonu ──
-try:
-    render_next_step_button(st.session_state.aktif_sayfa)
-except Exception:
-    pass
+# ── Navigasyon: Önceki / Sonraki Adım ──
+_ANA_AKIS = [
+    ("1_parsel", "Parsel Girişi"),
+    ("3_imar", "İmar Bilgileri"),
+    ("4_hesaplama", "Hesaplama"),
+    ("5_daire", "Daire Bölümleme"),
+    ("6_plan", "Kat Planı"),
+    ("7_ai", "Mobilya Yerleştirme"),
+    ("8_3d", "3D Görselleştirme"),
+    ("10_fizibilite", "Fizibilite"),
+    ("18_rapor", "Rapor & Export"),
+]
+_aktif = st.session_state.aktif_sayfa
+_akis_keys = [k for k, _ in _ANA_AKIS]
+if _aktif in _akis_keys:
+    _idx = _akis_keys.index(_aktif)
+    st.markdown("---")
+    _col_prev, _col_info, _col_next = st.columns([1, 2, 1])
+    with _col_prev:
+        if _idx > 0:
+            _prev_key, _prev_label = _ANA_AKIS[_idx - 1]
+            if st.button(f"⬅️ {_prev_label}", key="nav_prev", use_container_width=True):
+                st.session_state.aktif_sayfa = _prev_key
+                st.rerun()
+    with _col_info:
+        st.caption(f"Adım {_idx + 1} / {len(_ANA_AKIS)}")
+    with _col_next:
+        if _idx < len(_ANA_AKIS) - 1:
+            _next_key, _next_label = _ANA_AKIS[_idx + 1]
+            if st.button(f"{_next_label} ➡️", key="nav_next", use_container_width=True, type="primary"):
+                st.session_state.aktif_sayfa = _next_key
+                st.rerun()
 
 # ── Her render sonrası otomatik kaydet ──
 _auto_save()
