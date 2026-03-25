@@ -360,6 +360,12 @@ with st.sidebar:
             st.session_state.aktif_sayfa = key
             st.rerun()
 
+    st.markdown("### 📖 YARDIM")
+    if st.button("📖 Kullanım Kılavuzu", key="nav_kilavuz", use_container_width=True,
+                 type="primary" if st.session_state.aktif_sayfa == "kilavuz" else "secondary"):
+        st.session_state.aktif_sayfa = "kilavuz"
+        st.rerun()
+
     st.markdown("---")
 
     # ── API Key Ayarları ──
@@ -1070,6 +1076,350 @@ def sayfa_ajan_panel():
     from agents.agent_dashboard import render_agent_dashboard; render_agent_dashboard()
 
 
+def sayfa_kilavuz():
+    """Kullanım Kılavuzu — Adım adım detaylı yönlendirme."""
+    st.header("📖 Kullanım Kılavuzu")
+    st.markdown("Bu kılavuz, İmar Plan Üretici uygulamasını adım adım nasıl kullanacağınızı açıklar.")
+
+    # ── Genel Bakış ──
+    with st.expander("🏠 Genel Bakış — Uygulama Nedir?", expanded=True):
+        st.markdown("""
+**İmar Uyumlu Kat Planı Üretici**, Türkiye'ye özgü parsel ölçüleri ve imar parametrelerinden
+başlayarak kat planları üreten kapsamlı bir platformdur.
+
+**Ne Yapabilirsiniz?**
+- Parsel geometrinizi girerek imar hesaplamalarını otomatik yapabilirsiniz
+- 5 farklı layout tipinde profesyonel kat planları üretebilirsiniz
+- 3D bina modeli oluşturabilirsiniz
+- Mali fizibilite ve Monte Carlo risk analizi yapabilirsiniz
+- Deprem risk analizi ve enerji performans hesabı yapabilirsiniz
+- SVG, DXF (AutoCAD) ve PDF formatlarında dışa aktarabilirsiniz
+- AI (Claude + Grok) ile doğal dil komutlarıyla plan üretebilirsiniz
+
+**Önerilen İş Akışı:** Sayfaları 1'den 25'e doğru sırayla takip edin.
+        """)
+
+    # ── ADIM 1 ──
+    with st.expander("📍 ADIM 1 — Parsel Girişi (Sayfa 1)"):
+        st.markdown("""
+### Parsel Geometrinizi Tanımlayın
+
+**Manuel Giriş Sekmesi:**
+1. **Parsel Şekli** seçin: Dikdörtgen, Dörtgen, Beşgen, Altıgen veya Düzensiz
+2. **Kuzey Yönü** seçin (ön cephe yönü)
+3. Dikdörtgen için **En** ve **Boy** değerlerini metre cinsinden girin
+   - Örnek: En = 22m, Boy = 28m → 616 m² parsel
+4. Çokgen parseller için kenar uzunluklarını ve açıları girin
+5. **"Parseli Oluştur"** butonuna tıklayın
+
+**TKGM Otomatik Sekmesi:**
+1. İl, İlçe, Mahalle bilgilerini seçin
+2. Ada ve Parsel numarasını girin (örnek: Ada 1301, Parsel 7)
+3. **"Parsel Sorgula"** butonuna tıklayın
+4. TKGM API'den otomatik olarak parsel sınırları çekilir
+
+**Sonuç:** Sağ tarafta parsel alan, çevre, köşe sayısı ve çizimi görüntülenir.
+        """)
+
+    # ── ADIM 2 ──
+    with st.expander("🗺️ ADIM 2 — Konum & Çevre Analizi (Sayfa 2)"):
+        st.markdown("""
+### Konumunuzu Belirleyin
+
+1. **Enlem ve Boylam** değerlerini girin veya hızlı şehir seçimi yapın
+2. Harita üzerinde parselin konumunu görün
+3. **"Güneş Analizi Yap"** butonuna tıklayarak:
+   - En iyi cephe yönünü öğrenin (genellikle güney)
+   - Yıllık güneş saatini hesaplayın
+   - Cephe bazlı güneş dağılımını görün
+   - Salon ve balkon için optimum yön önerileri alın
+
+**İpucu:** Güneş analizi sonuçları, kat planı üretiminde salon ve balkon yönünü
+otomatik olarak optimize etmek için kullanılır.
+        """)
+
+    # ── ADIM 3 ──
+    with st.expander("📐 ADIM 3 — İmar Bilgileri (Sayfa 3)"):
+        st.markdown("""
+### Belediye İmar Parametrelerini Girin
+
+**Temel Parametreler:**
+1. **Kat Adedi** — Belediye imar planında izin verilen kat sayısı (örnek: 4)
+2. **İnşaat Nizamı** — A (Ayrık), B (Bitişik) veya BL (Blok)
+3. **TAKS** — Taban Alanı Kat Sayısı (örnek: 0.35 = parselin %35'i)
+4. **KAKS / Emsal** — Toplam inşaat alanı oranı (örnek: 1.40)
+
+**Çekme Mesafeleri:**
+5. **Ön Bahçe** — Yoldan minimum mesafe (genellikle 5m)
+6. **Yan Bahçe** — Komşu parselden minimum mesafe (genellikle 3m)
+7. **Arka Bahçe** — 0 girilirse H/2 kuralı otomatik uygulanır (Yönetmelik Madde 6)
+
+**Ek Gereksinimler:**
+8. Asansör (4+ katta otomatik zorunlu), Sığınak, Otopark seçenekleri
+
+**"İmar Bilgilerini Kaydet"** butonuna tıklayın.
+
+**Nereden Bulunur:** Bu bilgileri belediyenizin e-imar uygulamasından veya
+imar müdürlüğünden alabilirsiniz.
+        """)
+
+    # ── ADIM 4 ──
+    with st.expander("📊 ADIM 4 — Hesaplama Sonuçları (Sayfa 4)"):
+        st.markdown("""
+### Otomatik Hesaplama Sonuçlarını İnceleyin
+
+Bu sayfa parsel + imar bilgilerinden otomatik hesaplama yapar:
+
+**Görüntülenen Metrikler:**
+- **Parsel Alanı** — Girdiğiniz parselin toplam alanı
+- **Maks. Taban Alanı** — TAKS sınırına göre bina oturumu
+- **Toplam İnşaat Alanı** — KAKS × parsel alanı
+- **Kat Başı Net Alan** — Dairelere kalan alan (ortak alanlar düşülmüş)
+- **Emsal Harici Toplam** — Sığınak, otopark, merdiven, asansör, giriş holü
+
+**Görselleştirmeler:**
+- Ortak alan dağılımı pasta grafiği
+- Parsel + yapılaşma alanı üst üste çizimi
+
+**Uyarılar:** Çekme mesafeleri, KAKS/TAKS uyumsuzluğu, bina yüksekliği
+limiti gibi sorunlar otomatik tespit edilir.
+        """)
+
+    # ── ADIM 5 ──
+    with st.expander("🏠 ADIM 5 — Daire Bölümleme (Sayfa 5)"):
+        st.markdown("""
+### Daire Tipini ve Oda Programını Belirleyin
+
+**Manuel Giriş:**
+1. **Kat başına daire sayısı** seçin (1-8 arası)
+2. **Daire tipi** seçin (1+1, 2+1, 3+1, 4+1, 5+1)
+3. Her daire için önerilen alan otomatik hesaplanır
+4. **"Bina Programını Oluştur"** butonuna tıklayın
+5. Oda alanlarını tabloda düzenleyebilirsiniz
+6. Her oda için minimum alan kontrolü yapılır (İmar Kanunu'na göre)
+
+**AI ile Doğal Dil:**
+1. API Key'inizi sidebar'dan girin
+2. Doğal dille daire programınızı yazın:
+   - *"Her katta 2 daire, 3+1, salon 30m², yatak odaları 15m²"*
+3. AI analiz edip JSON formatında program oluşturur
+
+**Minimum Alan Kontrolleri:** Salon ≥16m², Yatak ≥9m², Mutfak ≥5m², Banyo ≥3.5m²
+        """)
+
+    # ── ADIM 6 ──
+    with st.expander("📋 ADIM 6 — Kat Planı Üretimi (Sayfa 6)"):
+        st.markdown("""
+### Profesyonel Kat Planları Üretin
+
+**Profesyonel Üretim (API key gerektirmez):**
+1. **Daire Tipi** ve **Güneş Yönü** seçin
+2. **Alternatif Sayısı** belirleyin (2-4 arası)
+3. **Hedef Daire Alanı** girin
+4. **"Profesyonel Plan Üret"** butonuna tıklayın
+5. Her plan 0-100 arası puanlanır (11 kriter)
+
+**5 Layout Tipi:**
+- Merkez Koridor (klasik Türk dairesi)
+- L-Şekilli Koridor
+- T-Şekilli Koridor
+- Kısa Koridor (kompakt)
+- Açık Plan (salon + mutfak birleşik)
+
+**Puanlama Kriterleri:** Oda boyut uyumu, bitişiklik, dış cephe erişimi,
+ıslak hacim gruplaması, güneş optimizasyonu, pencere/zemin oranı
+
+**Plan Seçimi:** Beğendiğiniz planın altındaki **"Plan Seç"** butonuna tıklayın.
+
+**Dışa Aktarma:** SVG ve DXF formatında indirme butonları her planın altında yer alır.
+
+**AI Destekli Üretim:** Claude + Grok dual AI motoru ile 4 alternatif üretir,
+çapraz değerlendirme yapar, en iyi 3'ü seçer.
+        """)
+
+    # ── ADIM 7 ──
+    with st.expander("🤖 ADIM 7 — AI İyileştirme & Tefriş (Sayfa 7)"):
+        st.markdown("""
+### Mobilya Yerleştirme ve AI İyileştirme
+
+1. Seçili plan otomatik yüklenir
+2. **"Mobilya Yerleştir"** butonuna tıklayın
+3. Her oda tipi için uygun mobilyalar otomatik yerleştirilir:
+   - Salon: koltuk takımı, TV ünitesi, sehpa
+   - Yatak odası: yatak, komodin, dolap
+   - Mutfak: tezgah, ocak, buzdolabı, masa
+   - Banyo: küvet/duş, lavabo, klozet
+4. Mobilya listesi sağ panelde görüntülenir
+5. Plan + mobilya birlikte çizilir
+        """)
+
+    # ── ADIM 8 ──
+    with st.expander("🏗️ ADIM 8 — 3D Görselleştirme (Sayfa 8)"):
+        st.markdown("""
+### İnteraktif 3D Bina Modeli
+
+1. Seçili plan otomatik yüklenir (yoksa demo plan gösterilir)
+2. **Kat Sayısı** ayarlayın
+3. **Çatı Tipi** seçin: Kırma (eğimli) veya Teras (düz)
+4. **Patlak Görünüm** ile katları ayrı ayrı görün
+5. **Kat Filtre** ile tek bir katı inceleyin
+6. Fare ile döndürme, yakınlaştırma, kaydırma yapabilirsiniz
+
+**3D Modelde Görünenler:**
+- Duvarlar (dış/iç farklı renk)
+- Pencereler (cam yüzey + çerçeve)
+- Kapılar
+- Merdiven (basamak detayı)
+- Balkon (korkuluk dikmeleri)
+- Çatı (kırma veya teras)
+- Parsel zemin alanı
+        """)
+
+    # ── ADIM 9-10 ──
+    with st.expander("💰 ADIM 9 — Mali Fizibilite (Sayfa 10)"):
+        st.markdown("""
+### Yatırım Fizibilite Analizi
+
+**Parametreleri Girin:**
+1. **İl** seçin (bölgesel maliyet farkı uygulanır)
+2. **Yapı Kalitesi** seçin: Ekonomik / Orta / Lüks
+3. **Arsa Maliyeti** girin (₺)
+4. **m² Satış Fiyatı** girin (₺)
+5. **"Fizibilite Hesapla"** butonuna tıklayın
+
+**Sonuçlar:**
+- Toplam Maliyet / Gelir / Kâr-Zarar
+- Kâr Marjı (%) ve ROI (%)
+- Başabaş m² satış fiyatı
+- Kârlılık endeksi ve yatırım geri dönüş süresi
+- Maliyet dağılım grafiği
+
+**Duyarlılık Analizi:** Maliyet ve satış fiyatındaki değişimlerin
+kâr marjına etkisini 4×5 ısı haritasında görün.
+
+**Monte Carlo Simülasyonu:**
+1. Maliyet ve gelir belirsizlik oranlarını ayarlayın
+2. **"Simülasyon Çalıştır"** butonuna tıklayın (5000 senaryo)
+3. Zarar olasılığını, P5/P50/P95 değerlerini ve histogram grafiğini görün
+
+**PDF Rapor:** Hesaplama sonrası **"📄 Fizibilite Raporu İndir"** butonu ile
+profesyonel PDF rapor indirin.
+        """)
+
+    # ── ADIM 10 ──
+    with st.expander("🔬 ADIM 10 — Deprem Risk Analizi (Sayfa 11)"):
+        st.markdown("""
+### TBDY 2018 Deprem Risk Değerlendirmesi
+
+1. **Enlem/Boylam** girin (veya konum sayfasından aktarılır)
+2. **Kat Sayısı** girin
+3. **Zemin Sınıfı** seçin:
+   - ZA: Sağlam kaya
+   - ZB: Kaya
+   - ZC: Çok sıkı kum/sert kil (en yaygın)
+   - ZD: Sıkı kum/katı kil
+   - ZE: Yumuşak zemin
+4. **"Deprem Analizi Yap"** butonuna tıklayın
+
+**Sonuçlar:**
+- Risk seviyesi (Düşük / Orta / Yüksek / Çok Yüksek)
+- Ss (kısa periyot) ve S1 (1sn periyot) ivme değerleri
+- Taşıyıcı sistem önerisi (Çerçeve, Perde, Tünel Kalıp vb.)
+- Kolon grid önerisi
+- Detaylı analiz tablosu
+        """)
+
+    # ── ADIM 11 ──
+    with st.expander("⚡ ADIM 11 — Enerji Performans (Sayfa 12)"):
+        st.markdown("""
+### Bina Enerji Kimlik Belgesi Tahmini
+
+1. **Duvar Yalıtımı** seçin (5cm EPS → 12cm XPS)
+2. **Pencere Tipi** seçin (Tek cam → Low-E)
+3. **Çatı Yalıtımı** ve **Isıtma Sistemi** seçin
+4. **Pencere/Duvar Oranı** ayarlayın (0.15 - 0.50)
+5. **"Enerji Hesapla"** butonuna tıklayın
+
+**Sonuçlar:**
+- Enerji sınıfı (A-G) renkli gösterge
+- Yıllık ısıtma/soğutma tüketimi (kWh/m²·yıl)
+- Yıllık enerji maliyeti (₺)
+- İyileştirme önerileri
+        """)
+
+    # ── Agentler ──
+    with st.expander("🤖 ADIM 12 — Otonom Agentler (Sayfa 23-25)"):
+        st.markdown("""
+### Agent Sistemi ile Toplu Analiz
+
+**Ajan Kontrol Paneli (Sayfa 23):**
+1. 4 farklı ajan ve 1 orkestratör bulunur
+2. **"Tüm Ajanları Çalıştır"** butonuna tıklayın
+3. İlerleme çubuğu ile durumu takip edin
+
+**Ajanlar:**
+- **Plan Optimizasyon** — 200 plan varyasyonu üretir, en iyilerini seçer
+- **Maliyet Optimizasyon** — 4 yapı sistemi × 3 malzeme karşılaştırır
+- **Daire Karması** — 2+1/3+1/4+1 kombinasyonlarını kârlılığa göre optimize eder
+- **Toplu Fizibilite** — 8 farklı parseli toplu analiz eder
+
+**Fırsat Merkezi (Sayfa 24):** Ajan sonuçlarından en kârlı fırsatları listeler
+**Piyasa İstihbarat (Sayfa 25):** Plan kalite istatistikleri ve aksiyon önerileri
+        """)
+
+    # ── API Ayarları ──
+    with st.expander("🔑 API Ayarları"):
+        st.markdown("""
+### AI Özelliklerini Aktifleştirme
+
+Uygulama API key olmadan da çalışır (algoritmik plan üretimi).
+AI destekli özellikler için:
+
+1. **Claude API Key:** [console.anthropic.com](https://console.anthropic.com) adresinden alın
+2. **Grok API Key:** [console.x.ai](https://console.x.ai) adresinden alın
+3. Sidebar'daki **"API Ayarları"** bölümünden girin
+
+**API Key olmadan çalışan özellikler:**
+- Tüm imar hesaplamaları
+- Profesyonel plan üretimi (5 layout tipi)
+- 3D görselleştirme
+- Mali fizibilite ve Monte Carlo
+- Deprem / enerji / güneş analizi
+- Agent sistemi
+- SVG / DXF / PDF export
+
+**API Key gerektiren özellikler:**
+- AI destekli plan üretimi (Dual Engine)
+- Doğal dil daire bölümleme
+- Fotogerçekçi render
+- AI plan iyileştirme
+        """)
+
+    # ── Sık Sorulan Sorular ──
+    with st.expander("❓ Sık Sorulan Sorular"):
+        st.markdown("""
+**S: TAKS ve KAKS değerlerini nereden bulurum?**
+C: Belediyenizin e-imar uygulamasından veya imar müdürlüğünden temin edebilirsiniz.
+
+**S: Arka bahçe mesafesi nedir?**
+C: 0 girerseniz otomatik olarak H/2 kuralı uygulanır (bina yüksekliğinin yarısı).
+
+**S: Plan puanı ne anlama gelir?**
+C: 0-100 arası bir değerdir. 11 kriter üzerinden değerlendirilir:
+oda boyutları, bitişiklik, dış cephe, ıslak hacim gruplaması, güneş yönü,
+koridor verimliliği, pencere/zemin oranı, yapısal grid, yönetmelik uyumu.
+
+**S: DXF dosyasını nerede açabilirim?**
+C: AutoCAD, LibreCAD, DraftSight gibi CAD yazılımlarında açabilirsiniz.
+
+**S: API key güvenliği nasıl sağlanır?**
+C: API key'ler sadece oturum süresince bellekte tutulur, diske kaydedilmez.
+
+**S: Uygulama hangi yönetmeliklere uyar?**
+C: Planlı Alanlar İmar Yönetmeliği (03.07.2017/30113) ve TBDY 2018.
+        """)
+
+
 # ── Placeholder'lar (Dış API gerektiren sayfalar) ──
 def placeholder_sayfa(baslik, faz, aciklama=""):
     st.header(baslik)
@@ -1471,6 +1821,7 @@ SAYFA_MAP = {
     "23_ajan_panel":  sayfa_ajan_panel,
     "24_firsat":      sayfa_firsat,
     "25_piyasa":      sayfa_piyasa,
+    "kilavuz":        sayfa_kilavuz,
 }
 
 # ── Progress indicator ──
