@@ -1086,90 +1086,94 @@ def sayfa_veri():
     placeholder_sayfa("🔄 Veri Güncelleme", "FAZ 9", "Sahibinden, TCMB, TÜİK scraper'ları + otomatik güncelleme.")
 
 def sayfa_crm():
-    """CRM Sayfası — Müşteri ve proje takibi."""
+    """CRM Sayfası — Müşteri ve proje takibi (Supabase PostgreSQL kalıcı)."""
     st.header("👥 CRM — Müşteri ve Proje Takibi")
+
+    from database.db import (
+        get_backend_info, musteri_ekle, musteri_listele,
+        musteri_durum_guncelle, musteri_sil,
+        proje_ekle, proje_listele,
+    )
+
+    # DB durum göstergesi
+    db_info = get_backend_info()
+    if db_info["kalici"]:
+        st.success("✅ Supabase PostgreSQL bağlı — veriler kalıcı olarak saklanıyor")
+    else:
+        st.warning(
+            "⚠️ SQLite fallback (geçici) — Veriler uygulama restart'ında silinir.\n\n"
+            "**Kalıcı depolama için:** Streamlit Cloud > Settings > Secrets bölümüne ekleyin:\n"
+            '```\nSUPABASE_DB_URL = "postgresql://postgres.[ref]:[sifre]@aws-0-[region].pooler.supabase.com:6543/postgres"\n```'
+        )
 
     st.markdown("""
     <div class="help-tip">
     <b>Bu sayfada ne yapacaksınız?</b> Müşterilerinizi ve projelerinizi takip edin.
     Müşteri ekleyin, durumlarını güncelleyin ve Kanban görünümünde takip edin.
-    Veriler tarayıcı oturumunda tutulur; kalıcı depolama için veritabanı entegrasyonu gerekir.
     </div>
     """, unsafe_allow_html=True)
 
-    from database.db import get_engine
-    try:
-        from sqlalchemy import text
-        engine = get_engine()
-    except Exception:
-        engine = None
-
-    # Müşteri ekleme formu
-    with st.expander("Yeni Musteri Ekle", expanded=False):
+    # ── Müşteri ekleme formu ──
+    with st.expander("➕ Yeni Müşteri Ekle", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             mus_ad = st.text_input("Ad Soyad", key="crm_ad")
             mus_tel = st.text_input("Telefon", key="crm_tel")
             mus_email = st.text_input("E-posta", key="crm_email")
         with col2:
-            mus_tip = st.selectbox("Musteri Tipi",
-                                    ["Bireysel", "Kurumsal", "Muteahhit"],
+            mus_tip = st.selectbox("Müşteri Tipi",
+                                    ["Bireysel", "Kurumsal", "Müteahhit"],
                                     key="crm_tip")
             mus_durum = st.selectbox("Durum",
-                                      ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"],
+                                      ["Aday", "Görüşme", "Teklif", "Sözleşme", "Tamamlandı"],
                                       key="crm_durum")
             mus_not = st.text_area("Notlar", key="crm_not", height=68)
 
-        if st.button("Musteri Kaydet", type="primary", key="crm_kaydet"):
+        if st.button("💾 Müşteri Kaydet", type="primary", key="crm_kaydet"):
             if not mus_ad:
                 st.warning("Ad Soyad zorunludur.")
             else:
-                if "crm_musteriler" not in st.session_state:
-                    st.session_state.crm_musteriler = []
-                st.session_state.crm_musteriler.append({
-                    "ad": mus_ad, "tel": mus_tel, "email": mus_email,
-                    "tip": mus_tip, "durum": mus_durum, "not": mus_not,
-                })
-                st.success(f"Musteri eklendi: {mus_ad}")
-                st.rerun()
+                mid = musteri_ekle(mus_ad, mus_tel, mus_email, mus_tip, mus_durum, mus_not)
+                if mid:
+                    st.success(f"Müşteri eklendi: {mus_ad} (ID: {mid})")
+                    st.rerun()
+                else:
+                    st.error("Müşteri eklenirken hata oluştu.")
 
-    # Proje ekleme
-    with st.expander("Yeni Proje Ekle", expanded=False):
+    # ── Proje ekleme formu ──
+    with st.expander("➕ Yeni Proje Ekle", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
-            prj_ad = st.text_input("Proje Adi", key="crm_prj_ad")
-            prj_il = st.text_input("Il/Ilce", key="crm_prj_il")
+            prj_ad = st.text_input("Proje Adı", key="crm_prj_ad")
+            prj_il = st.text_input("İl / İlçe", key="crm_prj_il")
         with col2:
             prj_durum = st.selectbox("Proje Durumu",
-                                      ["Fizibilite", "Tasarim", "Ruhsat", "Insaat", "Teslim"],
+                                      ["Fizibilite", "Tasarım", "Ruhsat", "İnşaat", "Teslim"],
                                       key="crm_prj_durum")
-            prj_butce = st.number_input("Butce (TL)", 0, 100_000_000, 5_000_000,
+            prj_butce = st.number_input("Bütçe (₺)", 0, 100_000_000, 5_000_000,
                                          step=100_000, key="crm_prj_butce")
 
-        if st.button("Proje Kaydet", type="primary", key="crm_prj_kaydet"):
+        if st.button("💾 Proje Kaydet", type="primary", key="crm_prj_kaydet"):
             if not prj_ad:
-                st.warning("Proje adi zorunludur.")
+                st.warning("Proje adı zorunludur.")
             else:
-                if "crm_projeler" not in st.session_state:
-                    st.session_state.crm_projeler = []
-                st.session_state.crm_projeler.append({
-                    "ad": prj_ad, "il": prj_il,
-                    "durum": prj_durum, "butce": prj_butce,
-                })
-                st.success(f"Proje eklendi: {prj_ad}")
-                st.rerun()
+                pid = proje_ekle(prj_ad, prj_il, prj_durum, prj_butce)
+                if pid:
+                    st.success(f"Proje eklendi: {prj_ad} (ID: {pid})")
+                    st.rerun()
+                else:
+                    st.error("Proje eklenirken hata oluştu.")
 
-    # Müşteri listesi
-    st.subheader("Musteri Listesi")
-    musteriler = st.session_state.get("crm_musteriler", [])
+    # ── Müşteri listesi ──
+    st.subheader("👤 Müşteri Listesi")
+    musteriler = musteri_listele()
     if musteriler:
-        import pandas as pd
         df = pd.DataFrame(musteriler)
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
         # Kanban görünüm
-        st.subheader("Kanban Gorunum")
-        durumlar = ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"]
+        st.subheader("📋 Kanban Görünüm")
+        durumlar = ["Aday", "Görüşme", "Teklif", "Sözleşme", "Tamamlandı"]
         cols = st.columns(len(durumlar))
         for i, durum in enumerate(durumlar):
             with cols[i]:
@@ -1179,21 +1183,49 @@ def sayfa_crm():
                     st.markdown(
                         f"<div style='background:#f0f0f0; padding:8px; "
                         f"border-radius:4px; margin:4px 0; font-size:12px;'>"
-                        f"<b>{m['ad']}</b><br>{m.get('tel','')}</div>",
+                        f"<b>{m['ad']}</b><br>{m.get('tel','')}"
+                        f"<br><small>ID: {m['id']}</small></div>",
                         unsafe_allow_html=True,
                     )
-    else:
-        st.info("Henuz musteri eklenmedi. Yukaridaki formdan ekleyebilirsiniz.")
 
-    # Proje listesi
-    st.subheader("Proje Listesi")
-    projeler = st.session_state.get("crm_projeler", [])
-    if projeler:
-        import pandas as pd
-        df_p = pd.DataFrame(projeler)
-        st.dataframe(df_p, use_container_width=True)
+        # Durum güncelleme
+        with st.expander("🔄 Müşteri Durumu Güncelle"):
+            col_id, col_dur, col_btn = st.columns([1, 2, 1])
+            with col_id:
+                upd_id = st.number_input("Müşteri ID", min_value=1, step=1, key="crm_upd_id")
+            with col_dur:
+                upd_durum = st.selectbox("Yeni Durum",
+                                          durumlar, key="crm_upd_durum")
+            with col_btn:
+                st.write("")
+                st.write("")
+                if st.button("Güncelle", key="crm_upd_btn"):
+                    if musteri_durum_guncelle(upd_id, upd_durum):
+                        st.success("Durum güncellendi.")
+                        st.rerun()
+                    else:
+                        st.error("Güncelleme başarısız — ID bulunamadı.")
+
+        # Müşteri silme
+        with st.expander("🗑️ Müşteri Sil"):
+            del_id = st.number_input("Silinecek Müşteri ID", min_value=1, step=1, key="crm_del_id")
+            if st.button("Sil", type="secondary", key="crm_del_btn"):
+                if musteri_sil(del_id):
+                    st.success("Müşteri silindi.")
+                    st.rerun()
+                else:
+                    st.error("Silme başarısız — ID bulunamadı.")
     else:
-        st.info("Henuz proje eklenmedi.")
+        st.info("Henüz müşteri eklenmedi. Yukarıdaki formdan ekleyebilirsiniz.")
+
+    # ── Proje listesi ──
+    st.subheader("🏗️ Proje Listesi")
+    projeler = proje_listele()
+    if projeler:
+        df_p = pd.DataFrame(projeler)
+        st.dataframe(df_p, use_container_width=True, hide_index=True)
+    else:
+        st.info("Henüz proje eklenmedi.")
 
 
 def sayfa_workflow():
