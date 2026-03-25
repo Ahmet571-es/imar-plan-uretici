@@ -3,6 +3,13 @@
 """
 
 from dataclasses import dataclass, field
+
+try:
+    import streamlit as st
+    _cache_data = st.cache_data
+except Exception:
+    _cache_data = lambda **kwargs: lambda f: f  # no-op decorator for testing
+
 from config.cost_defaults import (
     get_construction_cost, MALIYET_DAGILIMI, OTOPARK_MALIYETLERI, GIDER_ORANLARI,
 )
@@ -40,6 +47,7 @@ class MaliyetSonucu:
         }
 
 
+@_cache_data(ttl=3600)
 def hesapla_maliyet(
     toplam_insaat_alani: float,
     il: str = "Ankara",

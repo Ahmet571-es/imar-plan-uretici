@@ -7,6 +7,12 @@ import math
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
+try:
+    import streamlit as st
+    _cache_data = st.cache_data
+except Exception:
+    _cache_data = lambda **kwargs: lambda f: f  # no-op decorator for testing
+
 
 @dataclass
 class SunAnalysisResult:
@@ -21,6 +27,7 @@ class SunAnalysisResult:
     recommendations: list = field(default_factory=list)
 
 
+@_cache_data(ttl=86400)
 def analyze_sun(
     latitude: float = 39.93,  # Ankara varsayılan
     longitude: float = 32.86,

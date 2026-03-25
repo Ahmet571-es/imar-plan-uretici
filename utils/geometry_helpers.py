@@ -208,7 +208,12 @@ def cekme_mesafesi_uygula(
     return result
 
 
-def _line_intersection(p1, p2, p3, p4):
+def _line_intersection(
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    p4: tuple[float, float],
+) -> tuple[float, float] | None:
     """İki doğru parçasının (sonsuz) kesişim noktasını bulur."""
     x1, y1 = p1
     x2, y2 = p2

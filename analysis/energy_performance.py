@@ -8,6 +8,12 @@ Enerji Performans Tahmini — Basitleştirilmiş BEP-TR hesaplama, A-G sınıfı
 
 from dataclasses import dataclass, field
 
+try:
+    import streamlit as st
+    _cache_data = st.cache_data
+except Exception:
+    _cache_data = lambda **kwargs: lambda f: f  # no-op decorator for testing
+
 ENERJI_SINIFLARI = {
     "A":  {"max_kwh": 50,  "renk": "#4CAF50", "aciklama": "Cok iyi"},
     "B":  {"max_kwh": 100, "renk": "#8BC34A", "aciklama": "Iyi"},
@@ -83,6 +89,7 @@ class EnerjiSonucu:
         }
 
 
+@_cache_data(ttl=3600)
 def enerji_performans_hesapla(
     toplam_alan: float,
     kat_sayisi: int = 4,

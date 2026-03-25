@@ -24,14 +24,14 @@ from utils.geometry_helpers import (
 class Parsel:
     """Parsel nesnesi — geometri, alan, kenar ve açı bilgilerini tutar."""
 
-    def __init__(self, polygon: Polygon, yon: str = "kuzey"):
-        self.polygon = polygon
-        self.yon = yon  # Kuzey yönü bilgisi
-        self._kenarlar = None
-        self._acilar = None
+    def __init__(self, polygon: Polygon, yon: str = "kuzey") -> None:
+        self.polygon: Polygon = polygon
+        self.yon: str = yon  # Kuzey yönü bilgisi
+        self._kenarlar: list[float] | None = None
+        self._acilar: list[float] | None = None
 
     @classmethod
-    def from_kenarlar_acilar(cls, kenarlar: list[float], acilar: list[float] | None = None, yon: str = "kuzey"):
+    def from_kenarlar_acilar(cls, kenarlar: list[float], acilar: list[float] | None = None, yon: str = "kuzey") -> "Parsel":
         """Kenar uzunlukları ve açılardan Parsel oluştur."""
         if acilar is None:
             acilar = otomatik_acilar_hesapla(kenarlar)
@@ -39,13 +39,13 @@ class Parsel:
         return cls(poly, yon=yon)
 
     @classmethod
-    def from_dikdortgen(cls, en: float, boy: float, yon: str = "kuzey"):
+    def from_dikdortgen(cls, en: float, boy: float, yon: str = "kuzey") -> "Parsel":
         """Dikdörtgen parsel oluştur."""
         poly = dikdortgen_polygon(en, boy)
         return cls(poly, yon=yon)
 
     @classmethod
-    def from_koordinatlar(cls, coords: list[tuple[float, float]], yon: str = "kuzey"):
+    def from_koordinatlar(cls, coords: list[tuple[float, float]], yon: str = "kuzey") -> "Parsel":
         """Koordinatlardan Parsel oluştur."""
         poly = koordinatlardan_polygon(coords)
         return cls(poly, yon=yon)
@@ -88,10 +88,10 @@ class Parsel:
         return polygon_to_coords_list(self.polygon)
 
     @property
-    def bounds(self):
+    def bounds(self) -> tuple[float, float, float, float]:
         return self.polygon.bounds
 
-    def ozet(self) -> dict:
+    def ozet(self) -> dict[str, object]:
         """Parsel özet bilgileri."""
         return {
             "alan_m2": round(self.alan, 2),

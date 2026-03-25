@@ -9,6 +9,12 @@ Deprem Risk Analizi — AFAD/TBDY 2018 parametreleri ve taşıyıcı sistem öne
 import logging
 from dataclasses import dataclass, field
 
+try:
+    import streamlit as st
+    _cache_data = st.cache_data
+except Exception:
+    _cache_data = lambda **kwargs: lambda f: f  # no-op decorator for testing
+
 logger = logging.getLogger(__name__)
 
 ZEMIN_SINIFLARI = {
@@ -65,6 +71,7 @@ class DepremAnalizi:
         }
 
 
+@_cache_data(ttl=86400)
 def deprem_risk_analizi(
     latitude: float = 39.93,
     longitude: float = 32.86,
