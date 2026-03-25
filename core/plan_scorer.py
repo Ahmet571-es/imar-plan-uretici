@@ -98,6 +98,8 @@ class ScoreBreakdown:
     sun_optimization: float = 0.0
     structural_grid: float = 0.0
     code_compliance: float = 0.0
+    pencere_zemin_orani: float = 0.0
+    islak_hacim_mesafesi: float = 0.0
     total: float = 0.0
     details: list = field(default_factory=list)
 
@@ -112,6 +114,8 @@ class ScoreBreakdown:
             "Güneş Optimizasyonu": f"{self.sun_optimization:.1f}",
             "Yapısal Grid": f"{self.structural_grid:.1f}",
             "Yönetmelik Uyumu": f"{self.code_compliance:.1f}",
+            "Pencere/Zemin Oranı": f"{self.pencere_zemin_orani:.1f}",
+            "Islak Hacim Mesafesi": f"{self.islak_hacim_mesafesi:.1f}",
             "TOPLAM": f"{self.total:.1f}/100",
         }
 
@@ -262,6 +266,77 @@ def score_plan(
     viol_penalty = len(violations) * 20
     score.code_compliance = max(0, 100 - viol_penalty) * w["code_compliance"]
 
+    # ── 10. Pencere/Zemin Oranı ──
+    # Türk yapı yönetmeliği: pencere alanı / zemin alanı >= 1/8
+    # WC ve koridor hariç her oda pencere almalıdır
+    pzo_score = 0.0
+    pzo_max = 0.0
+    pencere_haric_tipler = ("wc", "koridor")
+    for room in plan.rooms:
+        if room.room_type in pencere_haric_tipler:
+            continue
+        pzo_max += 1.0
+        if not room.windows:
+            # Penceresi olmayan oda — puan kaybı
+            score.details.append(
+                f"⚠️ {room.name}: pencere yok (yönetmelik ihlali)"
+            )
+            continue
+
+        # Toplam pencere alanı tahmini (pencere genişliği × standart yükseklik 1.2m)
+        toplam_pencere_alan = sum(
+            w.get("width", 0) * 1.2 for w in room.windows
+        )
+        oran = toplam_pencere_alan / room.area if room.area > 0 else 0
+        if oran >= 1 / 8:
+            pzo_score += 1.0
+        elif oran >= 1 / 12:
+            pzo_score += 0.5
+            score.details.append(
+                f"⚠️ {room.name}: pencere/zemin oranı düşük ({oran:.2f}, min 1/8)"
+            )
+        else:
+            score.details.append(
+                f"⚠️ {room.name}: pencere/zemin oranı yetersiz ({oran:.2f}, min 1/8)"
+            )
+
+    # Pencere/zemin oranı ağırlığı — toplam puanın %3'ü
+    pzo_agirlik = 0.03
+    score.pencere_zemin_orani = (
+        (pzo_score / max(pzo_max, 1)) * 100 * pzo_agirlik
+    )
+
+    # ── 11. Islak Hacim Mesafesi ──
+    # Islak hacimler arası merkez-merkez mesafe 5m'yi aşarsa puan kaybı
+    ihm_agirlik = 0.02  # Toplam puanın %2'si
+    wet_rooms_all = [r for r in plan.rooms if is_wet_area(r.room_type)]
+    if len(wet_rooms_all) >= 2:
+        max_wet_dist = 0.0
+        for i, wr1 in enumerate(wet_rooms_all):
+            for wr2 in wet_rooms_all[i + 1:]:
+                dist = math.sqrt(
+                    (wr1.center[0] - wr2.center[0]) ** 2 +
+                    (wr1.center[1] - wr2.center[1]) ** 2
+                )
+                max_wet_dist = max(max_wet_dist, dist)
+
+        if max_wet_dist <= 5.0:
+            score.islak_hacim_mesafesi = 100 * ihm_agirlik
+        elif max_wet_dist <= 8.0:
+            # Kademeli puan kaybı
+            kayip_orani = (max_wet_dist - 5.0) / 3.0
+            score.islak_hacim_mesafesi = max(0, (1.0 - kayip_orani)) * 100 * ihm_agirlik
+            score.details.append(
+                f"⚠️ Islak hacimler arası mesafe: {max_wet_dist:.1f}m (max 5m önerilir)"
+            )
+        else:
+            score.islak_hacim_mesafesi = 0.0
+            score.details.append(
+                f"⚠️ Islak hacimler arası mesafe çok fazla: {max_wet_dist:.1f}m (max 5m)"
+            )
+    else:
+        score.islak_hacim_mesafesi = 100 * ihm_agirlik
+
     # ── TOPLAM ──
     score.total = (
         score.room_size +
@@ -272,7 +347,9 @@ def score_plan(
         score.circulation +
         score.sun_optimization +
         score.structural_grid +
-        score.code_compliance
+        score.code_compliance +
+        score.pencere_zemin_orani +
+        score.islak_hacim_mesafesi
     )
 
     return score

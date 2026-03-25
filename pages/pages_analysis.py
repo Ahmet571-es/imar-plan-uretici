@@ -125,6 +125,35 @@ def sayfa_fizibilite():
         fig_heat = create_sensitivity_heatmap(matris, m_labels, f_labels)
         st.pyplot(fig_heat)
 
+        # Monte Carlo simülasyonu
+        st.markdown("---")
+        st.subheader("🎲 Monte Carlo Risk Simülasyonu")
+        from analysis.feasibility import monte_carlo_simulasyonu, create_monte_carlo_chart
+
+        col_mc1, col_mc2 = st.columns(2)
+        with col_mc1:
+            mc_maliyet_std = st.slider("Maliyet Belirsizliği (%)", 5, 30, 10, key="mc_mal_std") / 100
+        with col_mc2:
+            mc_gelir_std = st.slider("Gelir Belirsizliği (%)", 5, 40, 15, key="mc_gel_std") / 100
+
+        if st.button("🎲 Simülasyon Çalıştır (5000 senaryo)", type="primary", key="btn_mc"):
+            mc = monte_carlo_simulasyonu(
+                maliyet.toplam_maliyet, gelir.toplam_gelir,
+                maliyet_std=mc_maliyet_std, gelir_std=mc_gelir_std,
+            )
+            st.session_state.mc_result = mc
+
+        if "mc_result" in st.session_state:
+            mc = st.session_state.mc_result
+            col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+            col_r1.metric("Zarar Olasılığı", f"%{mc['zarar_olasiligi']:.1f}")
+            col_r2.metric("Ortalama Kâr", f"₺{mc['kar_ortalama']:,.0f}")
+            col_r3.metric("En Kötü Senaryo (P5)", f"₺{mc['percentiles']['p5']:,.0f}")
+            col_r4.metric("En İyi Senaryo (P95)", f"₺{mc['percentiles']['p95']:,.0f}")
+
+            fig_mc = create_monte_carlo_chart(mc)
+            st.pyplot(fig_mc)
+
 
 def sayfa_deprem():
     """Sayfa 11 — Deprem Risk Analizi."""

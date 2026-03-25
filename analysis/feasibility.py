@@ -127,6 +127,108 @@ def duyarlilik_analizi(
     return matris
 
 
+def monte_carlo_simulasyonu(
+    baz_maliyet: float,
+    baz_gelir: float,
+    maliyet_std: float = 0.10,
+    gelir_std: float = 0.15,
+    simulasyon_sayisi: int = 5000,
+) -> dict:
+    """Monte Carlo risk simülasyonu — maliyet ve gelir belirsizliği analizi.
+
+    Normal dağılım ile rastgele maliyet/gelir senaryoları üretir.
+
+    Args:
+        baz_maliyet: Baz toplam maliyet (₺).
+        baz_gelir: Baz toplam gelir (₺).
+        maliyet_std: Maliyet standart sapması (oran, ör: 0.10 = %10).
+        gelir_std: Gelir standart sapması (oran, ör: 0.15 = %15).
+        simulasyon_sayisi: Simülasyon iterasyon sayısı.
+
+    Returns:
+        dict: {
+            "kar_ortalama", "kar_std", "kar_min", "kar_max",
+            "zarar_olasiligi", "yuksek_kar_olasiligi",
+            "kar_dagilimi", "percentiles"
+        }
+    """
+    rng = np.random.default_rng(42)
+
+    maliyetler = rng.normal(baz_maliyet, baz_maliyet * maliyet_std, simulasyon_sayisi)
+    gelirler = rng.normal(baz_gelir, baz_gelir * gelir_std, simulasyon_sayisi)
+
+    # Negatif değerleri sıfırla
+    maliyetler = np.maximum(maliyetler, 0)
+    gelirler = np.maximum(gelirler, 0)
+
+    karlar = gelirler - maliyetler
+
+    zarar_sayisi = np.sum(karlar < 0)
+    yuksek_kar_sayisi = np.sum(karlar > baz_gelir * 0.20)  # %20+ kâr
+
+    return {
+        "kar_ortalama": float(np.mean(karlar)),
+        "kar_std": float(np.std(karlar)),
+        "kar_min": float(np.min(karlar)),
+        "kar_max": float(np.max(karlar)),
+        "kar_medyan": float(np.median(karlar)),
+        "zarar_olasiligi": float(zarar_sayisi / simulasyon_sayisi * 100),
+        "yuksek_kar_olasiligi": float(yuksek_kar_sayisi / simulasyon_sayisi * 100),
+        "kar_dagilimi": karlar.tolist(),
+        "percentiles": {
+            "p5": float(np.percentile(karlar, 5)),
+            "p25": float(np.percentile(karlar, 25)),
+            "p50": float(np.percentile(karlar, 50)),
+            "p75": float(np.percentile(karlar, 75)),
+            "p95": float(np.percentile(karlar, 95)),
+        },
+        "simulasyon_sayisi": simulasyon_sayisi,
+    }
+
+
+def create_monte_carlo_chart(mc_result: dict):
+    """Monte Carlo simülasyon sonuçlarının histogram grafiğini oluşturur."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    karlar = mc_result["kar_dagilimi"]
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    # Histogram
+    n, bins, patches = ax.hist(karlar, bins=50, edgecolor="white", alpha=0.7)
+
+    # Renklendirme: zarar kırmızı, kâr yeşil
+    for patch, left_edge in zip(patches, bins[:-1]):
+        if left_edge < 0:
+            patch.set_facecolor("#EF5350")
+        else:
+            patch.set_facecolor("#66BB6A")
+
+    # Percentil çizgileri
+    p = mc_result["percentiles"]
+    for label, val, color in [
+        ("P5", p["p5"], "#E53935"),
+        ("P50", p["p50"], "#1E88E5"),
+        ("P95", p["p95"], "#43A047"),
+    ]:
+        ax.axvline(val, color=color, linestyle="--", linewidth=1.5)
+        ax.text(val, ax.get_ylim()[1] * 0.9, f" {label}\n ₺{val:,.0f}",
+                fontsize=8, color=color, fontweight="bold")
+
+    ax.set_xlabel("Kâr / Zarar (₺)", fontsize=11)
+    ax.set_ylabel("Frekans", fontsize=11)
+    ax.set_title(
+        f"Monte Carlo Risk Simülasyonu ({mc_result['simulasyon_sayisi']:,} senaryo)\n"
+        f"Zarar Olasılığı: %{mc_result['zarar_olasiligi']:.1f} | "
+        f"Ortalama Kâr: ₺{mc_result['kar_ortalama']:,.0f}",
+        fontsize=12, fontweight="bold",
+    )
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
 def create_sensitivity_heatmap(matris, maliyet_labels, fiyat_labels):
     """Duyarlılık matrisi ısı haritası oluşturur."""
     import matplotlib

@@ -2,6 +2,7 @@
 DXF (AutoCAD) Dışa Aktarma — ezdxf ile katmanlı mimari çizim.
 """
 
+import io
 import logging
 import math
 
@@ -117,6 +118,117 @@ def export_dxf(plan, output_path: str = "kat_plani.dxf", scale: float = 1.0) -> 
     doc.saveas(output_path)
     logger.info(f"DXF kaydedildi: {output_path}")
     return output_path
+
+
+def export_dxf_bytes(plan, scale: float = 1.0) -> bytes:
+    """Kat planını DXF formatında bytes olarak döndürür (Streamlit indirme butonu için).
+
+    Args:
+        plan: FloorPlan nesnesi (rooms listesi).
+        scale: Ölçek çarpanı.
+
+    Returns:
+        DXF içeriği (bytes).
+    """
+    try:
+        import ezdxf
+        from ezdxf.enums import TextEntityAlignment
+    except ImportError:
+        logger.error("ezdxf kurulu değil. pip install ezdxf")
+        return b""
+
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+
+    # ── Katmanlar ──
+    doc.layers.add("DUVAR_DIS", color=7, lineweight=50)
+    doc.layers.add("DUVAR_IC", color=8, lineweight=25)
+    doc.layers.add("KAPI", color=1, lineweight=15)
+    doc.layers.add("PENCERE", color=5, lineweight=15)
+    doc.layers.add("OLCU", color=3, lineweight=5)
+    doc.layers.add("METIN", color=2, lineweight=5)
+    doc.layers.add("MOBILYA", color=8, lineweight=5)
+    doc.layers.add("HATCH", color=6)
+
+    if not plan or not plan.rooms:
+        text_buffer = io.StringIO()
+        doc.write(text_buffer)
+        return text_buffer.getvalue().encode("utf-8")
+
+    for room in plan.rooms:
+        x, y = room.x * scale, room.y * scale
+        w, h = room.width * scale, room.height * scale
+        layer = "DUVAR_DIS" if room.has_exterior_wall else "DUVAR_IC"
+
+        # ── Duvarlar (dikdörtgen) ──
+        points = [(x, y), (x + w, y), (x + w, y + h), (x, y + h), (x, y)]
+        msp.add_lwpolyline(points, dxfattribs={"layer": layer})
+
+        # ── Oda ismi ──
+        cx, cy = x + w / 2, y + h / 2
+        msp.add_text(
+            room.name,
+            dxfattribs={
+                "layer": "METIN",
+                "height": 0.25 * scale,
+                "insert": (cx, cy + 0.2 * scale),
+            },
+        ).set_placement((cx, cy + 0.2 * scale), align=TextEntityAlignment.MIDDLE_CENTER)
+
+        # ── Alan ──
+        msp.add_text(
+            f"{room.area:.1f} m²",
+            dxfattribs={
+                "layer": "METIN",
+                "height": 0.18 * scale,
+                "insert": (cx, cy - 0.3 * scale),
+            },
+        ).set_placement((cx, cy - 0.3 * scale), align=TextEntityAlignment.MIDDLE_CENTER)
+
+        # ── Ölçü çizgileri ──
+        _add_dimension(msp, (x, y - 0.4 * scale), (x + w, y - 0.4 * scale),
+                       f"{room.width:.2f}", scale)
+        _add_dimension(msp, (x - 0.4 * scale, y), (x - 0.4 * scale, y + h),
+                       f"{room.height:.2f}", scale, vertical=True)
+
+        # ── Pencereler ──
+        for window in room.windows:
+            _draw_window_dxf(msp, room, window, scale)
+
+        # ── Kapılar ──
+        for door in room.doors:
+            _draw_door_dxf(msp, room, door, scale)
+
+        # ── Islak hacim taraması ──
+        if room.room_type in ("banyo", "wc"):
+            hatch = msp.add_hatch(color=6, dxfattribs={"layer": "HATCH"})
+            hatch.paths.add_polyline_path(
+                [(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
+                is_closed=True,
+            )
+            hatch.set_pattern_fill("ANSI31", scale=0.5 * scale)
+
+    # ── Kuzey oku ──
+    max_x = max(r.x + r.width for r in plan.rooms) * scale + 2 * scale
+    max_y = max(r.y + r.height for r in plan.rooms) * scale
+    msp.add_line((max_x, max_y - 1.5 * scale), (max_x, max_y), dxfattribs={"layer": "OLCU"})
+    msp.add_text("K", dxfattribs={
+        "layer": "METIN", "height": 0.4 * scale,
+        "insert": (max_x - 0.15 * scale, max_y + 0.2 * scale),
+    })
+
+    # ── Ölçek çubuğu ──
+    msp.add_line((0, -1.5 * scale), (5 * scale, -1.5 * scale), dxfattribs={"layer": "OLCU"})
+    msp.add_text(f"5 m (1:{int(100/scale)})", dxfattribs={
+        "layer": "METIN", "height": 0.2 * scale,
+        "insert": (2.5 * scale, -1.8 * scale),
+    })
+
+    # Belleğe yaz — ezdxf.write() metin akışı bekler, sonra bytes'a çevir
+    text_buffer = io.StringIO()
+    doc.write(text_buffer)
+    logger.info("DXF bytes olarak oluşturuldu")
+    return text_buffer.getvalue().encode("utf-8")
 
 
 def _add_dimension(msp, p1, p2, text, scale, vertical=False):
