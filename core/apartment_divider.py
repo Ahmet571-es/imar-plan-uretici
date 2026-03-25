@@ -214,3 +214,157 @@ def daire_olustur_custom(
         brut_alan=brut_alan,
         odalar=odalar,
     )
+
+
+# ══════════════════════════════════════════════════════════════
+# DERİNLEŞTİRİLMİŞ DAİRE OPTİMİZASYONU
+# ══════════════════════════════════════════════════════════════
+
+def optimize_daire_dagilimi(
+    kat_basi_net_alan: float,
+    kat_sayisi: int,
+    kat_basi_brut_alan: float,
+    ortak_alan: float,
+    hedef_daire_tipi: str = "3+1",
+    max_daire_per_kat: int = 4,
+) -> BinaProgrami:
+    """Optimum daire dağılımını hesaplar — farklı kombinasyonları dener.
+
+    Farklı daire sayısı/tip kombinasyonlarını dener,
+    en iyi alan kullanımını ve tip uyumunu bulan konfigürasyonu seçer.
+
+    Returns:
+        En yüksek puanlı BinaProgrami.
+    """
+    try:
+        from dataset.dataset_rules import APARTMENT_TYPE_STATS
+    except ImportError:
+        APARTMENT_TYPE_STATS = {}
+
+    tipler = ["1+1", "2+1", "3+1", "4+1", "5+1"]
+    en_iyi_puan = -1
+    en_iyi_bina = None
+    en_iyi_bilgi = {}
+
+    for daire_sayisi in range(1, max_daire_per_kat + 1):
+        daire_brut = kat_basi_net_alan / daire_sayisi
+
+        # Bu alan için en uygun daire tipini bul
+        en_uygun_tip = hedef_daire_tipi
+        en_iyi_tip_puan = 0
+
+        for tip in tipler:
+            stats = APARTMENT_TYPE_STATS.get(tip, {})
+            min_g = stats.get("min_gross", 40)
+            max_g = stats.get("max_gross", 300)
+            avg_g = stats.get("avg_gross", 100)
+
+            if min_g <= daire_brut <= max_g:
+                # Alan ortalamaya ne kadar yakın?
+                uzaklik = abs(daire_brut - avg_g) / max(avg_g, 1)
+                alan_puani = max(0, 100 - uzaklik * 100)
+
+                # Hedef tipe yakınlık bonusu
+                tip_bonusu = 20 if tip == hedef_daire_tipi else 0
+
+                toplam = alan_puani + tip_bonusu
+                if toplam > en_iyi_tip_puan:
+                    en_iyi_tip_puan = toplam
+                    en_uygun_tip = tip
+
+        # Verimlilik puanı: kullanılan / mevcut alan
+        kullanilan = daire_brut * daire_sayisi
+        verimlilik = kullanilan / max(kat_basi_net_alan, 1)
+        verimlilik_puani = max(0, 100 - abs(1 - verimlilik) * 200)
+
+        # Genel puan
+        puan = en_iyi_tip_puan * 0.6 + verimlilik_puani * 0.4
+
+        if puan > en_iyi_puan:
+            en_iyi_puan = puan
+            en_iyi_bilgi = {
+                "daire_sayisi": daire_sayisi,
+                "daire_tipi": en_uygun_tip,
+                "daire_brut": daire_brut,
+                "puan": puan,
+            }
+
+    # En iyi konfigürasyon ile bina programı oluştur
+    if en_iyi_bilgi:
+        en_iyi_bina = varsayilan_daireler_olustur(
+            kat_basi_net_alan=kat_basi_net_alan,
+            kat_sayisi=kat_sayisi,
+            kat_basi_brut_alan=kat_basi_brut_alan,
+            ortak_alan=ortak_alan,
+            daire_sayisi_per_kat=en_iyi_bilgi["daire_sayisi"],
+            daire_tipi=en_iyi_bilgi["daire_tipi"],
+        )
+    else:
+        en_iyi_bina = varsayilan_daireler_olustur(
+            kat_basi_net_alan, kat_sayisi, kat_basi_brut_alan, ortak_alan,
+        )
+
+    return en_iyi_bina
+
+
+def analiz_bina_programi(bina: BinaProgrami) -> dict:
+    """Bina programı detaylı analizi.
+
+    Returns:
+        dict: Tip dağılımı, alan verimlilik, duvar kayıp, tip uyum puanı ve öneriler.
+    """
+    tum_daireler = bina.tum_daireler()
+    if not tum_daireler:
+        return {"toplam_daire": 0, "oneriler": ["Henüz daire oluşturulmamış"]}
+
+    tip_sayac = {}
+    daire_alanlar = []
+    duvar_kayiplar = []
+
+    for d in tum_daireler:
+        tip_sayac[d.tip] = tip_sayac.get(d.tip, 0) + 1
+        daire_alanlar.append(d.brut_alan)
+        if d.brut_alan > 0:
+            duvar_kayiplar.append(d.duvar_kayip / d.brut_alan)
+
+    # Toplam kullanılan alan
+    toplam_kullanilan = sum(k.kullanilan_alan for k in bina.katlar)
+    toplam_mevcut = sum(k.net_kullanilabilir for k in bina.katlar)
+    verimlilik = toplam_kullanilan / max(toplam_mevcut, 1)
+
+    # Tip uyum puanı (homojen dağılım daha iyi)
+    tip_cesitlilik = len(tip_sayac)
+    if tip_cesitlilik == 1:
+        tip_uyum = 90  # Homojen — iyi
+    elif tip_cesitlilik == 2:
+        tip_uyum = 80  # 2 tip — kabul edilebilir
+    else:
+        tip_uyum = 60  # 3+ tip — karmaşık
+
+    # Öneriler
+    oneriler = []
+    if verimlilik < 0.85:
+        oneriler.append(f"Alan verimliliği düşük (%{verimlilik*100:.0f}). Daire sayısını artırabilirsiniz.")
+    if verimlilik > 0.98:
+        oneriler.append("Daireler çok sıkışık. Ortak alanlara yeterli yer bırakıldığından emin olun.")
+
+    avg_kayip = sum(duvar_kayiplar) / max(len(duvar_kayiplar), 1)
+    if avg_kayip < 0.12:
+        oneriler.append(f"Duvar kayıp oranı düşük (%{avg_kayip*100:.0f}). Oda alanları gerçekçi mi kontrol edin.")
+    elif avg_kayip > 0.28:
+        oneriler.append(f"Duvar kayıp oranı yüksek (%{avg_kayip*100:.0f}). Alan israfı olabilir.")
+
+    if not oneriler:
+        oneriler.append("Bina programı dengeli ve verimli görünüyor.")
+
+    return {
+        "toplam_daire": len(tum_daireler),
+        "tip_dagilimi": tip_sayac,
+        "ortalama_daire_alan": round(sum(daire_alanlar) / max(len(daire_alanlar), 1), 1),
+        "en_kucuk_daire": round(min(daire_alanlar), 1),
+        "en_buyuk_daire": round(max(daire_alanlar), 1),
+        "alan_verimlilik": round(verimlilik, 2),
+        "duvar_kayip_ortalama": round(avg_kayip, 2),
+        "tip_uyum_puani": tip_uyum,
+        "oneriler": oneriler,
+    }

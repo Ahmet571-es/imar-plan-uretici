@@ -4,6 +4,13 @@ Deprem Risk Analizi — AFAD/TBDY 2018 parametreleri ve taşıyıcı sistem öne
 İyileştirmeler:
 - AFAD API endpoint doğrulaması
 - Kolon grid çizimi (overlay veri üretimi)
+- Tasarım spektral ivme hesaplamaları (SDS, SD1) — TBDY Madde 2.3
+- Deprem yer hareketi düzeyi (DD-1..DD-4) sınıflandırması
+- Bina performans hedefi belirleme (BKS + DD düzeyine göre)
+- Yapı davranış katsayısı (R) ve tahmini deprem yükü
+- Temel tipi ve perde duvar oranı önerisi (zemin sınıfına göre)
+- Kolon boyut önerisi (kat sayısına göre)
+- TBDY 2018 madde referansları
 """
 
 import logging
@@ -12,12 +19,46 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 ZEMIN_SINIFLARI = {
-    "ZA": {"aciklama": "Saglam kaya", "Fs": 0.8, "risk": "Cok Dusuk"},
-    "ZB": {"aciklama": "Kaya", "Fs": 0.9, "risk": "Dusuk"},
-    "ZC": {"aciklama": "Siki zemin", "Fs": 1.0, "risk": "Orta"},
-    "ZD": {"aciklama": "Yumusak zemin", "Fs": 1.2, "risk": "Yuksek"},
-    "ZE": {"aciklama": "Cok yumusak zemin", "Fs": 1.5, "risk": "Cok Yuksek"},
+    "ZA": {"aciklama": "Saglam kaya", "Fs": 0.8, "F1": 0.8, "risk": "Cok Dusuk"},
+    "ZB": {"aciklama": "Kaya", "Fs": 0.9, "F1": 0.8, "risk": "Dusuk"},
+    "ZC": {"aciklama": "Siki zemin", "Fs": 1.0, "F1": 1.0, "risk": "Orta"},
+    "ZD": {"aciklama": "Yumusak zemin", "Fs": 1.2, "F1": 1.5, "risk": "Yuksek"},
+    "ZE": {"aciklama": "Cok yumusak zemin", "Fs": 1.5, "F1": 2.0, "risk": "Cok Yuksek"},
 }
+
+# Perde duvar minimum oranları — zemin sınıfına göre (%)
+_PERDE_ORANLARI = {
+    "ZA": 0.15,
+    "ZB": 0.15,
+    "ZC": 0.20,
+    "ZD": 0.30,
+    "ZE": 0.40,
+}
+
+# Kolon boyut önerileri — kat aralığına göre
+_KOLON_BOYUT_TABLOSU = {
+    "1-4": {"en_cm": 30, "boy_cm": 50, "aciklama": "30x50 cm", "min_alan_cm2": 1500},
+    "5-7": {"en_cm": 40, "boy_cm": 60, "aciklama": "40x60 cm", "min_alan_cm2": 2400},
+    "8-10": {"en_cm": 50, "boy_cm": 70, "aciklama": "50x70 cm", "min_alan_cm2": 3500},
+    "10+": {"en_cm": 50, "boy_cm": 70, "aciklama": "50x70 cm (detayli analiz gerekir)", "min_alan_cm2": 3500},
+}
+
+# TBDY 2018 varsayılan madde referansları
+_TBDY_REFERANSLAR_VARSAYILAN = [
+    "TBDY 2018 Madde 2.1 — Deprem Yer Hareketi Duzeyleri",
+    "TBDY 2018 Madde 2.2 — Deprem Yer Hareketi Tanimlari",
+    "TBDY 2018 Madde 2.3 — Tasarim Spektral Ivme Katsayilari (SDS, SD1)",
+    "TBDY 2018 Madde 2.4 — Yerel Zemin Etki Katsayilari (Fs, F1)",
+    "TBDY 2018 Madde 3.3 — Bina Kullanim Sinifi ve Bina Onem Katsayisi",
+    "TBDY 2018 Madde 3.4 — Bina Yukseklik Sinifi (BYS)",
+    "TBDY 2018 Tablo 3.1 — Bina Performans Hedefleri",
+    "TBDY 2018 Madde 4.1 — Deprem Tasarim Sinifi (DTS)",
+    "TBDY 2018 Tablo 4.1 — Tasiyici Sistem Davranis Katsayisi (R)",
+    "TBDY 2018 Madde 4.7 — Esdeger Deprem Yuku Yontemi",
+    "TBDY 2018 Madde 7.3 — Kolon Boyutlandirma Kurallari",
+    "TBDY 2018 Madde 16 — Temel Tasarimi Genel Kurallari",
+    "TBDY 2018 Ek-A — Zemin Siniflari ve Amplifikasyon Katsayilari",
+]
 
 
 @dataclass
@@ -49,41 +90,69 @@ class DepremAnalizi:
     kolon_grid: KolonGrid | None = None
     afad_api_basarili: bool = False
 
-    # Derinleştirilmiş TBDY 2018 parametreleri
-    tasarim_sds: float = 0.0          # Kısa periyot tasarım spektral ivme katsayısı
-    tasarim_sd1: float = 0.0          # 1s periyot tasarım spektral ivme katsayısı
-    dd_duzeyi: str = ""               # DD-1, DD-2, DD-3, DD-4
-    performans_hedefi: str = ""       # Kontrollü Hasar, Sınırlı Hasar vb.
-    yapi_davranis_r: float = 0.0      # R katsayısı (dayanım fazlalığı)
-    temel_tipi_onerisi: str = ""      # Temel, radye, kazıklı
-    perde_orani_min: float = 0.0      # Minimum perde duvar oranı (%)
-    kolon_boyut_onerisi: str = ""     # Önerilen kolon boyutları
-    tahmini_deprem_kuvveti_kn: float = 0.0  # Tahmini toplam deprem kuvveti
-    tbdy_referanslar: list = field(default_factory=list)
+    # --- Genişletilmiş TBDY 2018 parametreleri ---
+    tasarim_spektral_ivme_sds: float = 0.0
+    tasarim_spektral_ivme_sd1: float = 0.0
+    deprem_yer_hareketi_duzeyi: str = ""
+    bina_performans_hedefi: str = ""
+    zemin_buyutme_fs: float = 0.0
+    zemin_buyutme_f1: float = 0.0
+    temel_tipi_onerisi: str = ""
+    perde_duvar_orani_min: float = 0.0
+    kolon_boyut_onerisi: dict = field(default_factory=dict)
+    yapi_davranis_katsayisi_r: float = 0.0
+    tahmini_deprem_yuku_kn: float = 0.0
     risk_ozet: dict = field(default_factory=dict)
+    tbdy_referanslar: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "Konum": f"({self.latitude:.4f}, {self.longitude:.4f})",
             "Ss (Kisa Periyot)": f"{self.ss:.3f}",
             "S1 (1 sn Periyot)": f"{self.s1:.3f}",
-            "SDS (Tasarim)": f"{self.tasarim_sds:.3f}",
-            "SD1 (Tasarim)": f"{self.tasarim_sd1:.3f}",
-            "Deprem Duzeyi": self.dd_duzeyi,
             "Zemin Sinifi": (f"{self.zemin_sinifi} — "
                              f"{ZEMIN_SINIFLARI.get(self.zemin_sinifi, {}).get('aciklama', '')}"),
             "Bina Kullanim Sinifi": f"BKS-{self.bks}",
             "Bina Yukseklik Sinifi": f"BYS-{self.bys}",
-            "R Katsayisi": f"{self.yapi_davranis_r:.1f}",
             "Risk Seviyesi": self.risk_seviyesi,
-            "Performans Hedefi": self.performans_hedefi,
-            "Tasiyici Sistem": self.tasiyici_sistem_onerisi,
-            "Temel Tipi": self.temel_tipi_onerisi,
-            "Kolon Boyutu": self.kolon_boyut_onerisi,
-            "Perde Orani (min)": f"%{self.perde_orani_min:.1f}",
-            "Tahmini Deprem Kuvveti": f"{self.tahmini_deprem_kuvveti_kn:.0f} kN",
+            "Tasiyici Sistem Onerisi": self.tasiyici_sistem_onerisi,
+            "Kolon Grid Onerisi": self.kolon_grid_onerisi,
             "AFAD API": "Basarili" if self.afad_api_basarili else "Fallback tahmin",
+            # Genişletilmiş alanlar
+            "SDS (Tasarim Spektral Ivme)": f"{self.tasarim_spektral_ivme_sds:.3f}",
+            "SD1 (Tasarim Spektral Ivme)": f"{self.tasarim_spektral_ivme_sd1:.3f}",
+            "Deprem Yer Hareketi Duzeyi": self.deprem_yer_hareketi_duzeyi,
+            "Bina Performans Hedefi": self.bina_performans_hedefi,
+            "Zemin Buyutme Fs": f"{self.zemin_buyutme_fs:.2f}",
+            "Zemin Buyutme F1": f"{self.zemin_buyutme_f1:.2f}",
+            "Temel Tipi Onerisi": self.temel_tipi_onerisi,
+            "Perde Duvar Orani Min (%)": f"{self.perde_duvar_orani_min:.2f}",
+            "Kolon Boyut Onerisi": self.kolon_boyut_onerisi.get("aciklama", ""),
+            "Yapi Davranis Katsayisi (R)": f"{self.yapi_davranis_katsayisi_r:.1f}",
+            "Tahmini Deprem Yuku (kN)": f"{self.tahmini_deprem_yuku_kn:.1f}",
         }
+
+    def to_detailed_dict(self) -> dict:
+        """Genişletilmiş görünüm — tüm analiz verilerini, kolon grid
+        detaylarını, risk özetini ve TBDY referanslarını içerir."""
+        base = self.to_dict()
+        base.update({
+            "Deprem Bolgesi": self.deprem_bolgesi,
+            "Perde Onerisi": self.perde_onerisi,
+            "AFAD API Basarili": self.afad_api_basarili,
+            "Detaylar": list(self.detaylar),
+            "Kolon Boyut Detay": dict(self.kolon_boyut_onerisi),
+            "Risk Ozet": dict(self.risk_ozet),
+            "TBDY Referanslar": list(self.tbdy_referanslar),
+            "Kolon Grid": {
+                "x_akslar": self.kolon_grid.x_akslar if self.kolon_grid else [],
+                "y_akslar": self.kolon_grid.y_akslar if self.kolon_grid else [],
+                "kolon_boyut_m": list(self.kolon_grid.kolon_boyut) if self.kolon_grid else [],
+                "aks_isimleri_x": self.kolon_grid.aks_isimleri_x if self.kolon_grid else [],
+                "aks_isimleri_y": self.kolon_grid.aks_isimleri_y if self.kolon_grid else [],
+            },
+        })
+        return base
 
 
 def deprem_risk_analizi(
@@ -113,10 +182,20 @@ def deprem_risk_analizi(
     else:
         sonuc.s1 = sonuc.ss * 0.35
 
+    # Ham Ss/S1 — SDS/SD1 hesabı için amplifikasyon öncesi değerler
+    ss_ham = sonuc.ss
+    s1_ham = sonuc.s1
+
     # Zemin amplifikasyonu
     zemin_info = ZEMIN_SINIFLARI.get(zemin_sinifi, ZEMIN_SINIFLARI["ZC"])
-    sonuc.ss *= zemin_info["Fs"]
-    sonuc.s1 *= zemin_info["Fs"]
+    fs = zemin_info["Fs"]
+    f1 = zemin_info.get("F1", 1.0)
+    sonuc.ss *= fs
+    sonuc.s1 *= fs
+
+    # Zemin büyütme katsayılarını kaydet
+    sonuc.zemin_buyutme_fs = fs
+    sonuc.zemin_buyutme_f1 = f1
 
     # Risk seviyesi
     if sonuc.ss < 0.25:
@@ -170,114 +249,13 @@ def deprem_risk_analizi(
         bina_genisligi, bina_derinligi, grid_x, grid_y, kat_sayisi
     )
 
-    # ── Derinleştirilmiş TBDY 2018 Hesaplamaları ──
-
-    # Tasarım spektral ivme katsayıları (TBDY Madde 2.3)
-    sonuc.tasarim_sds = sonuc.ss * 2 / 3
-    sonuc.tasarim_sd1 = sonuc.s1 * 2 / 3
-
-    # Deprem yer hareketi düzeyi (DD seviyesi)
-    if sonuc.ss >= 1.50:
-        sonuc.dd_duzeyi = "DD-1 (En buyuk deprem)"
-    elif sonuc.ss >= 0.75:
-        sonuc.dd_duzeyi = "DD-2 (Standart tasarim depremi)"
-    elif sonuc.ss >= 0.33:
-        sonuc.dd_duzeyi = "DD-3 (Sik tekrarlanan deprem)"
-    else:
-        sonuc.dd_duzeyi = "DD-4 (Servis depremi)"
-
-    # Bina performans hedefi (TBDY Tablo 3.1)
-    if "DD-1" in sonuc.dd_duzeyi or "DD-2" in sonuc.dd_duzeyi:
-        if sonuc.bks >= 3:
-            sonuc.performans_hedefi = "Kontrollu Hasar (KH)"
-        else:
-            sonuc.performans_hedefi = "Sinirli Hasar (SH)"
-    else:
-        sonuc.performans_hedefi = "Hemen Kullanim (HK)"
-
-    # Yapı davranış katsayısı R (TBDY Tablo 4.1)
-    if kat_sayisi <= 3:
-        sonuc.yapi_davranis_r = 4.0   # Tünel kalıp / perdeli
-    elif kat_sayisi <= 7:
-        sonuc.yapi_davranis_r = 6.0   # Normal çerçeve
-    else:
-        sonuc.yapi_davranis_r = 8.0   # Sünek çerçeve
-
-    # Temel tipi önerisi
-    if zemin_sinifi in ("ZA", "ZB"):
-        sonuc.temel_tipi_onerisi = "Tekil / Surekli Temel"
-    elif zemin_sinifi == "ZC":
-        if kat_sayisi > 5:
-            sonuc.temel_tipi_onerisi = "Radye Temel"
-        else:
-            sonuc.temel_tipi_onerisi = "Surekli Temel veya Radye"
-    else:  # ZD, ZE
-        sonuc.temel_tipi_onerisi = "Kazikli Temel + Radye"
-
-    # Minimum perde duvar oranı
-    if zemin_sinifi in ("ZA", "ZB"):
-        sonuc.perde_orani_min = 0.15
-    elif zemin_sinifi == "ZC":
-        sonuc.perde_orani_min = 0.20
-    elif zemin_sinifi == "ZD":
-        sonuc.perde_orani_min = 0.30
-    else:
-        sonuc.perde_orani_min = 0.40
-
-    # Kolon boyutu önerisi
-    if kat_sayisi <= 4:
-        sonuc.kolon_boyut_onerisi = "30cm x 50cm (min 900 cm2)"
-    elif kat_sayisi <= 7:
-        sonuc.kolon_boyut_onerisi = "40cm x 60cm (min 2400 cm2)"
-    elif kat_sayisi <= 10:
-        sonuc.kolon_boyut_onerisi = "50cm x 70cm (min 3500 cm2)"
-    else:
-        sonuc.kolon_boyut_onerisi = "60cm x 80cm (min 4800 cm2)"
-
-    # Tahmini toplam deprem kuvveti (V = SDS × W / R)
-    # W = bina ağırlığı ≈ 1.2 ton/m² × toplam inşaat alanı
-    toplam_alan_tahmini = bina_genisligi * bina_derinligi * kat_sayisi
-    bina_agirligi_kn = toplam_alan_tahmini * 12.0  # 1.2 ton/m² × g
-    sonuc.tahmini_deprem_kuvveti_kn = (
-        sonuc.tasarim_sds * bina_agirligi_kn / max(sonuc.yapi_davranis_r, 1)
-    )
-
-    # TBDY madde referansları
-    sonuc.tbdy_referanslar = [
-        "TBDY 2018 Madde 2.3 — Tasarim spektral ivme katsayilari",
-        "TBDY 2018 Tablo 3.1 — Bina performans hedefleri",
-        "TBDY 2018 Tablo 4.1 — Yapi davranis katsayilari (R)",
-        "TBDY 2018 Madde 7.3 — Kolon boyutlandirma kurallari",
-        "TBDY 2018 Madde 16 — Temel tasarimi",
-        "TBDY 2018 Ek-A — Zemin siniflari ve amplifikasyon",
-    ]
-
-    # Risk özet sözlüğü
-    sonuc.risk_ozet = {
-        "genel_risk": sonuc.risk_seviyesi,
-        "deprem_duzeyi": sonuc.dd_duzeyi,
-        "performans": sonuc.performans_hedefi,
-        "tasiyici_sistem": sonuc.tasiyici_sistem_onerisi,
-        "temel": sonuc.temel_tipi_onerisi,
-        "kolon": sonuc.kolon_boyut_onerisi,
-        "perde_min": f"%{sonuc.perde_orani_min:.1f}",
-        "deprem_kuvveti": f"{sonuc.tahmini_deprem_kuvveti_kn:.0f} kN",
-    }
-
-    # Detaylar
+    # Detaylar (temel bilgiler — genişletilmiş hesaplamalar sonrası eklenir)
     sonuc.detaylar = [
         "TBDY 2018 parametreleri kullanilmistir",
         f"Bina yuksekligi tahmini: {bina_yuk:.0f}m ({kat_sayisi} kat x 3m)",
         f"Zemin sinifi: {zemin_sinifi} ({zemin_info['aciklama']})",
-        f"Tasarim spektral ivme: SDS={sonuc.tasarim_sds:.3f}, SD1={sonuc.tasarim_sd1:.3f}",
-        f"Deprem duzeyi: {sonuc.dd_duzeyi}",
-        f"Performans hedefi: {sonuc.performans_hedefi}",
-        f"R katsayisi: {sonuc.yapi_davranis_r:.1f}",
-        f"Tahmini deprem kuvveti: {sonuc.tahmini_deprem_kuvveti_kn:.0f} kN",
-        f"Temel onerisi: {sonuc.temel_tipi_onerisi}",
-        f"Kolon boyutu: {sonuc.kolon_boyut_onerisi}",
-        f"Min perde orani: %{sonuc.perde_orani_min:.1f}",
-        "Kesin degerler icin: https://tdth.afad.gov.tr/",
+        "Kesin degerler icin AFAD TDTH haritasindan sorgulanmalidir: "
+        "https://tdth.afad.gov.tr/",
         "Zemin etudu raporu zorunludur",
     ]
 
@@ -286,9 +264,159 @@ def deprem_risk_analizi(
             "Yuksek deprem riski — perde duvar sayisi artirilmali")
     if zemin_sinifi in ("ZD", "ZE"):
         sonuc.detaylar.append(
-            "Yumusak zemin — zemin iyilestirmesi / kazikli temel gerekebilir")
+            "Yumusak zemin — zemin iyilestirmesi gerekebilir")
+
+    # =====================================================================
+    # TBDY 2018 Genişletilmiş Hesaplamalar
+    # =====================================================================
+
+    # --- SDS ve SD1 hesabı (TBDY 2018 Madde 2.3) ---
+    # SDS = Ss × Fs × (2/3) ve SD1 = S1 × F1 × (2/3)
+    # ss_ham: amplifikasyon öncesi Ss; s1_ham: amplifikasyon öncesi S1
+    sonuc.tasarim_spektral_ivme_sds = ss_ham * fs * (2.0 / 3.0)
+    sonuc.tasarim_spektral_ivme_sd1 = s1_ham * f1 * (2.0 / 3.0)
+
+    # --- Deprem Yer Hareketi Düzeyi (DD-1 .. DD-4) ---
+    # Amplifikasyon öncesi Ss değerine göre sınıflandırma
+    if ss_ham > 1.5:
+        sonuc.deprem_yer_hareketi_duzeyi = "DD-1 (En buyuk deprem)"
+    elif ss_ham > 0.75:
+        sonuc.deprem_yer_hareketi_duzeyi = "DD-2 (Standart tasarim depremi)"
+    elif ss_ham > 0.33:
+        sonuc.deprem_yer_hareketi_duzeyi = "DD-3 (Sik tekrarlanan deprem)"
+    else:
+        sonuc.deprem_yer_hareketi_duzeyi = "DD-4 (Servis depremi)"
+
+    # --- Bina Performans Hedefi (BKS + DD düzeyi) ---
+    sonuc.bina_performans_hedefi = _performans_hedefi_belirle(
+        sonuc.bks, sonuc.deprem_yer_hareketi_duzeyi
+    )
+
+    # --- Yapı Davranış Katsayısı R (TBDY Tablo 4.1) ---
+    # Taşıyıcı sistem tipine göre:
+    #   Tünel kalıp sistemleri → R = 4
+    #   Normal çerçeve / perde-çerçeve → R = 6
+    #   Süneklik düzeyi yüksek özel moment çerçevesi → R = 8
+    if "Tunel Kalip" in sonuc.tasiyici_sistem_onerisi:
+        sonuc.yapi_davranis_katsayisi_r = 4.0
+    elif "Perde" in sonuc.tasiyici_sistem_onerisi:
+        sonuc.yapi_davranis_katsayisi_r = 6.0
+    else:
+        sonuc.yapi_davranis_katsayisi_r = 8.0
+
+    # --- Temel Tipi Önerisi (zemin sınıfına göre) ---
+    if zemin_sinifi in ("ZA", "ZB"):
+        sonuc.temel_tipi_onerisi = "Tekil / Surekli Temel (saglam zemin)"
+    elif zemin_sinifi == "ZC":
+        sonuc.temel_tipi_onerisi = "Radye Temel (orta sertlikte zemin)"
+    else:  # ZD, ZE
+        sonuc.temel_tipi_onerisi = (
+            "Kazikli Temel (yumusak zemin — fore kazik / mini kazik onerilir)"
+        )
+
+    # --- Perde Duvar Minimum Oranı (%) ---
+    sonuc.perde_duvar_orani_min = _PERDE_ORANLARI.get(zemin_sinifi, 0.20)
+
+    # --- Kolon Boyut Önerisi (kat sayısına göre) ---
+    if kat_sayisi <= 4:
+        sonuc.kolon_boyut_onerisi = dict(_KOLON_BOYUT_TABLOSU["1-4"])
+    elif kat_sayisi <= 7:
+        sonuc.kolon_boyut_onerisi = dict(_KOLON_BOYUT_TABLOSU["5-7"])
+    elif kat_sayisi <= 10:
+        sonuc.kolon_boyut_onerisi = dict(_KOLON_BOYUT_TABLOSU["8-10"])
+    else:
+        sonuc.kolon_boyut_onerisi = dict(_KOLON_BOYUT_TABLOSU["10+"])
+
+    # --- Tahmini Deprem Yükü (kN) ---
+    # W = 1.2 ton/m2 x toplam insaat alani
+    # V = SDS x W / R  (TBDY Madde 4.7 Esdeger Deprem Yuku Yontemi)
+    kat_alani = bina_genisligi * bina_derinligi  # m2
+    toplam_alan = kat_alani * kat_sayisi  # m2
+    w_ton = 1.2 * toplam_alan  # ton
+    w_kn = w_ton * 9.81  # kN (1 ton ~ 9.81 kN)
+    sds = sonuc.tasarim_spektral_ivme_sds
+    r = sonuc.yapi_davranis_katsayisi_r
+    sonuc.tahmini_deprem_yuku_kn = (sds * w_kn / r) if r > 0 else 0.0
+
+    # --- TBDY Madde Referansları ---
+    sonuc.tbdy_referanslar = list(_TBDY_REFERANSLAR_VARSAYILAN)
+    # Bağlama özgü ek referanslar
+    if zemin_sinifi in ("ZD", "ZE"):
+        sonuc.tbdy_referanslar.append(
+            "TBDY 2018 Madde 16.5 — Kazikli Temeller Icin Ozel Kurallar"
+        )
+    if kat_sayisi > 8:
+        sonuc.tbdy_referanslar.append(
+            "TBDY 2018 Madde 4.5 — Yuksek Binalar Icin Ek Kurallar"
+        )
+    if sonuc.risk_seviyesi == "Cok Yuksek":
+        sonuc.tbdy_referanslar.append(
+            "TBDY 2018 Madde 13 — Deprem Etkisi Altinda Mevcut Yapilarin Degerlendirilmesi"
+        )
+
+    # --- Risk Özet Sözlüğü ---
+    sonuc.risk_ozet = {
+        "deprem_bolgesi": sonuc.deprem_bolgesi,
+        "risk_seviyesi": sonuc.risk_seviyesi,
+        "dd_duzeyi": sonuc.deprem_yer_hareketi_duzeyi,
+        "performans_hedefi": sonuc.bina_performans_hedefi,
+        "sds": round(sonuc.tasarim_spektral_ivme_sds, 4),
+        "sd1": round(sonuc.tasarim_spektral_ivme_sd1, 4),
+        "zemin_buyutme_fs": sonuc.zemin_buyutme_fs,
+        "zemin_buyutme_f1": sonuc.zemin_buyutme_f1,
+        "r_katsayisi": sonuc.yapi_davranis_katsayisi_r,
+        "tahmini_deprem_yuku_kn": round(sonuc.tahmini_deprem_yuku_kn, 1),
+        "temel_tipi": sonuc.temel_tipi_onerisi,
+        "perde_orani_min_pct": sonuc.perde_duvar_orani_min,
+        "kolon_boyut": sonuc.kolon_boyut_onerisi.get("aciklama", ""),
+        "zemin_sinifi": zemin_sinifi,
+        "zemin_risk": zemin_info["risk"],
+        "toplam_alan_m2": round(toplam_alan, 1),
+        "bina_agirlik_kn": round(w_kn, 1),
+        "tasiyici_sistem": sonuc.tasiyici_sistem_onerisi,
+    }
+
+    # Detaylara genişletilmiş bilgiler ekle
+    sonuc.detaylar.extend([
+        f"SDS={sonuc.tasarim_spektral_ivme_sds:.3f}, "
+        f"SD1={sonuc.tasarim_spektral_ivme_sd1:.3f} (TBDY Madde 2.3)",
+        f"Zemin buyutme katsayilari: Fs={fs:.2f}, F1={f1:.2f}",
+        f"Deprem yer hareketi duzeyi: {sonuc.deprem_yer_hareketi_duzeyi}",
+        f"Performans hedefi: {sonuc.bina_performans_hedefi}",
+        f"Yapi davranis katsayisi R={sonuc.yapi_davranis_katsayisi_r:.1f}",
+        f"Tahmini deprem yuku: {sonuc.tahmini_deprem_yuku_kn:.1f} kN "
+        f"(W={w_kn:.0f} kN, alan={toplam_alan:.0f} m2)",
+        f"Temel onerisi: {sonuc.temel_tipi_onerisi}",
+        f"Perde duvar min orani: %{sonuc.perde_duvar_orani_min:.2f}",
+        f"Kolon boyut onerisi: {sonuc.kolon_boyut_onerisi.get('aciklama', '')}",
+    ])
 
     return sonuc
+
+
+def _performans_hedefi_belirle(bks: int, dd_duzeyi: str) -> str:
+    """BKS ve DD düzeyine göre bina performans hedefini belirler.
+
+    TBDY 2018 Tablo 3.1 — Bina Performans Hedefleri:
+    - BKS-1 (onemli bina):   DD-1/DD-2 → Kontrollu Hasar (KH)
+                              DD-3/DD-4 → Sinirli Hasar (SH)
+    - BKS-2 (normal bina):   DD-1/DD-2 → Kontrollu Hasar (KH)
+                              DD-3/DD-4 → Kontrollu Hasar (KH)
+    - BKS-3 (dusuk onemli):  DD-1/DD-2 → Gocme Oncesi (GO)
+                              DD-3/DD-4 → Kontrollu Hasar (KH)
+    """
+    yuksek_dd = ("DD-1" in dd_duzeyi or "DD-2" in dd_duzeyi)
+
+    if bks == 1:
+        if yuksek_dd:
+            return "Kontrollu Hasar (KH) — onemli bina, buyuk deprem"
+        return "Sinirli Hasar (SH) — onemli bina, kucuk deprem"
+    elif bks == 2:
+        return "Kontrollu Hasar (KH) — normal bina"
+    else:  # BKS-3 veya tanımsız
+        if yuksek_dd:
+            return "Gocme Oncesi (GO) — dusuk onemli bina, buyuk deprem"
+        return "Kontrollu Hasar (KH) — dusuk onemli bina, kucuk deprem"
 
 
 def _calculate_column_grid(
