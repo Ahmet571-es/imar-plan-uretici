@@ -42,6 +42,22 @@ GROUND_COLOR = "rgba(120,180,100,0.3)"
 BALCONY_COLOR = "rgba(200,200,200,0.6)"
 STAIR_COLOR = "rgba(160,120,80,0.7)"
 
+# Oda tipi bazlı zemin renkleri (3D döşeme renklendirme)
+ROOM_FLOOR_COLORS = {
+    "salon":       "rgba(255,235,200,0.7)",   # Sıcak ahşap tonu
+    "yatak_odasi": "rgba(220,230,255,0.7)",   # Açık mavi/huzurlu
+    "mutfak":      "rgba(255,245,220,0.7)",   # Krem/fayans tonu
+    "banyo":       "rgba(200,225,240,0.7)",   # Su mavisi
+    "wc":          "rgba(210,230,240,0.7)",   # Açık mavi
+    "antre":       "rgba(230,225,220,0.7)",   # Gri-bej
+    "koridor":     "rgba(235,230,225,0.7)",   # Nötr gri
+    "balkon":      "rgba(210,220,200,0.7)",   # Yeşilimsi
+}
+
+def _get_room_floor_color(room_type: str) -> str:
+    """Oda tipine göre zemin rengi döndürür."""
+    return ROOM_FLOOR_COLORS.get(room_type, "rgba(220,220,220,0.5)")
+
 
 def build_3d_model(
     plans: list[FloorPlan],

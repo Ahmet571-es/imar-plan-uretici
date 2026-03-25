@@ -143,6 +143,24 @@ def sayfa_plan():
                             st.metric("TOPLAM", v)
                         else:
                             st.text(f"{k}: {v}")
+
+                    # Derinleştirilmiş analiz verileri
+                    sc = plan_data["score"]
+                    if hasattr(sc, "mahremiyet_puani") and sc.mahremiyet_puani > 0:
+                        st.markdown("---")
+                        st.markdown("**Ek Analizler:**")
+                        st.text(f"Mahremiyet: {sc.mahremiyet_puani:.0f}/100")
+                        st.text(f"Fonksiyonel Bölge: {sc.fonksiyonel_bolge_puani:.0f}/100")
+                        st.text(f"Min. Boyut Uyumu: {sc.min_boyut_uyumu:.0f}/100")
+
+                    if hasattr(sc, "alan_dagilim_analizi") and sc.alan_dagilim_analizi:
+                        with st.expander("Alan Dağılımı"):
+                            for k2, v2 in sc.alan_dagilim_analizi.items():
+                                st.text(f"{k2}: {v2}")
+
+                    if hasattr(sc, "genel_degerlendirme") and sc.genel_degerlendirme:
+                        st.success(f"📝 {sc.genel_degerlendirme}")
+
                     if plan_data.get("reasoning"):
                         st.info(f"💬 {plan_data['reasoning']}")
 
@@ -152,10 +170,18 @@ def sayfa_plan():
                     import pandas as pd
                     df = pd.DataFrame([{
                         "Oda": r.name, "Boyut": f"{r.width:.1f}×{r.height:.1f}m",
-                        "Alan": f"{r.area:.1f} m²", "Cephe": r.facing_direction or "iç",
+                        "Alan": f"{r.area:.1f} m²",
+                        "Min Kenar": f"{r.min_dimension:.2f}m",
+                        "Cephe": r.facing_direction or "iç",
                         "Dış Duvar": "✅" if r.has_exterior_wall else "—",
                     } for r in plan_data["plan"].rooms])
                     st.dataframe(df, hide_index=True, use_container_width=True)
+
+                    # Güneş detayı
+                    if hasattr(sc, "gunes_detay") and sc.gunes_detay:
+                        with st.expander("☀️ Güneş Optimizasyonu Detayı"):
+                            for oda_adi, g_info in sc.gunes_detay.items():
+                                st.text(f"{oda_adi}: {g_info['yon']} yönü → {g_info['puan']}/100 (ideal: {g_info['ideal_yon']})")
 
                 if st.button(f"✅ Plan {i+1}'i Seç", key=f"select_plan_{i}"):
                     st.session_state.selected_plan = plan_data

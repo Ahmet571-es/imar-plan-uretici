@@ -636,8 +636,8 @@ def sayfa_hesaplama():
     sonuc = hesapla(parsel.polygon, imar)
     st.session_state.hesaplama = sonuc
 
-    # Metrikler
-    st.subheader("🔢 Hesaplama Sonuçları")
+    # Metrikler — Ana Göstergeler
+    st.subheader("🔢 Ana Hesaplama Sonuçları")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Parsel Alanı", f"{sonuc.parsel_alani:.1f} m²")
     col2.metric("Maks. Taban Alanı", f"{sonuc.max_taban_alani:.1f} m²")
@@ -650,12 +650,58 @@ def sayfa_hesaplama():
     col7.metric("Ortak Alan / Kat", f"{sonuc.toplam_ortak_alan:.1f} m²")
     col8.metric("Kat Sayısı", f"{imar.kat_adedi}")
 
+    # Derinleştirilmiş göstergeler
+    st.markdown("---")
+    st.subheader("📊 Derinleştirilmiş Analiz")
+    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+
+    verimlilik = getattr(sonuc, 'verimlilik_orani', 0)
+    col_d1.metric("Verimlilik Oranı", f"%{verimlilik:.1f}" if verimlilik else "—",
+                  help="Net alan / brüt alan oranı. %70 üzeri iyi")
+
+    emsal = getattr(sonuc, 'emsal_kullanim_orani', 0)
+    col_d2.metric("Emsal Kullanımı", f"%{emsal:.1f}" if emsal else "—",
+                  help="İzin verilen KAKS'ın ne kadarının kullanıldığı")
+
+    bina_h = getattr(sonuc, 'bina_yuksekligi', 0)
+    col_d3.metric("Bina Yüksekliği", f"{bina_h:.1f} m" if bina_h else "—",
+                  help="Kat sayısı × 3.0m kat yüksekliği")
+
+    max_daire = getattr(sonuc, 'max_daire_sayisi_tahmini', 0)
+    col_d4.metric("Maks. Daire (tahmini)", f"{max_daire}" if max_daire else "—",
+                  help="Toplam net alan / ortalama daire alanı (90m²) tahmini")
+
+    # Otopark bilgisi
+    otopark_alan = getattr(sonuc, 'otopark_alani', 0)
+    otopark_arac = getattr(sonuc, 'otopark_arac_kapasitesi', 0)
+    if otopark_arac > 0:
+        st.info(f"🅿️ Otopark: {otopark_arac} araçlık ({otopark_alan:.0f} m²)")
+
+    # Gabari durumu
+    gabari = getattr(sonuc, 'gabari_uygun', True)
+    if not gabari:
+        st.error(f"⚠️ Bina yüksekliği ({bina_h:.1f}m) gabari limitini ({imar.bina_yuksekligi_limiti:.1f}m) aşıyor!")
+
     # Detay tablosu
     st.markdown("---")
     st.subheader("📋 Detaylı Hesaplama Tablosu")
     ozet = sonuc.ozet_dict()
     df = pd.DataFrame({"Kalem": list(ozet.keys()), "Değer": list(ozet.values())})
     st.dataframe(df, hide_index=True, use_container_width=True)
+
+    # Kat detayları
+    kat_detay = getattr(sonuc, 'kat_detaylari', [])
+    if kat_detay:
+        with st.expander("🏢 Kat Bazlı Detay", expanded=False):
+            df_kat = pd.DataFrame(kat_detay)
+            st.dataframe(df_kat, hide_index=True, use_container_width=True)
+
+    # Çekme mesafe detayı
+    cekme_detay = getattr(sonuc, 'cekme_mesafe_detay', {})
+    if cekme_detay:
+        with st.expander("📐 Çekme Mesafe Detayı", expanded=False):
+            for k, v in cekme_detay.items():
+                st.text(f"{k}: {v}")
 
     # Ortak alan dağılımı
     st.markdown("---")
@@ -666,6 +712,7 @@ def sayfa_hesaplama():
         ortak_items = {
             "Merdiven Evi": sonuc.merdiven_alani,
             "Asansör": sonuc.asansor_alani,
+            "Giriş Holü": sonuc.giris_holu_alani,
             "Sığınak": sonuc.siginak_alani,
         }
         ortak_items = {k: v for k, v in ortak_items.items() if v > 0}
@@ -687,9 +734,14 @@ def sayfa_hesaplama():
     # Uyarılar
     if sonuc.uyarilar:
         st.markdown("---")
-        st.subheader("⚠️ Uyarılar")
+        st.subheader("⚠️ Uyarılar ve Bilgiler")
         for uyari in sonuc.uyarilar:
-            st.warning(uyari)
+            if "⚠️" in uyari:
+                st.warning(uyari)
+            elif "ℹ️" in uyari:
+                st.info(uyari)
+            else:
+                st.info(uyari)
 
     # Sonraki adım
     st.markdown("---")
