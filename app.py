@@ -143,6 +143,9 @@ def _load_project_json(json_str: str):
         st.session_state.hesaplama = hesapla(st.session_state.parsel.polygon, st.session_state.imar)
 
 
+# ── Sayfa yenilendiğinde otomatik yükle (session state init'ten ÖNCE) ──
+_auto_load()
+
 # ── Session State Başlangıç ──
 if "aktif_sayfa" not in st.session_state:
     st.session_state.aktif_sayfa = "1_parsel"
@@ -154,9 +157,6 @@ if "hesaplama" not in st.session_state:
     st.session_state.hesaplama = None
 if "bina_programi" not in st.session_state:
     st.session_state.bina_programi = None
-
-# Sayfa yenilendiğinde otomatik yükle
-_auto_load()
 
 # ── Sidebar Navigasyon ──
 with st.sidebar:
