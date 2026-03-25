@@ -94,6 +94,13 @@ INSAAT_NIZAMLARI = {
 # ── Daire Tipleri ──
 DAIRE_TIPLERI = ["1+1", "2+1", "3+1", "4+1", "5+1"]
 
+# ── Validasyon Toleransları ──
+KAT_ALAN_TOLERANS_ORANI = 1.05    # Kat alan kontrolünde %5 tolerans
+
+# ── Plan Üretici Sabitleri ──
+PENCERE_ON_BOSLUK = 0.60           # Pencere önü boş alan derinliği (metre)
+MUTFAK_TEZGAH_DERINLIK = 0.60     # Mutfak tezgah derinliği (metre)
+
 # ── Çizim Sabitleri ──
 CIZIM_DIS_DUVAR_PX = 3             # Dış duvar çizgi kalınlığı (px)
 CIZIM_IC_TASIYICI_PX = 2           # İç taşıyıcı duvar çizgi kalınlığı

@@ -46,7 +46,11 @@ _AUTOSAVE_PATH = "/tmp/imar_plan_autosave.json"
 
 
 def _auto_save():
-    """Session state'i /tmp'ye otomatik kaydet."""
+    """Session state'i /tmp'ye otomatik kaydet.
+
+    # GÜVENLİK: API key'ler kaydedilmez. Sadece parsel/imar verileri yazılır.
+    # Önbellek: Yan etkili fonksiyon, @st.cache_data KULLANILMAZ.
+    """
     try:
         data = {"aktif_sayfa": st.session_state.get("aktif_sayfa", "1_parsel")}
         if st.session_state.get("parsel"):
@@ -69,7 +73,10 @@ def _auto_save():
 
 
 def _auto_load():
-    """Sayfa yenilendiğinde /tmp'den otomatik yükle."""
+    """Sayfa yenilendiğinde /tmp'den otomatik yükle.
+
+    # Önbellek: Bu fonksiyon oturum durumuna bağlıdır, @st.cache_data KULLANILMAZ.
+    """
     if not _os.path.exists(_AUTOSAVE_PATH):
         return
     try:
@@ -843,12 +850,20 @@ def sayfa_daire():
                             text = text.split("```json")[1].split("```")[0]
                         elif "```" in text:
                             text = text.split("```")[1].split("```")[0]
-                        parsed = json.loads(text)
+                        text = text.strip()
+                        try:
+                            parsed = json.loads(text)
+                        except json.JSONDecodeError as je:
+                            st.error(f"AI geçersiz JSON döndürdü: {je}")
+                            st.code(text[:500], language="text")
+                            st.stop()
 
                         # Parsed sonucu bina programına dönüştür
                         st.success("✅ AI analizi tamamlandı!")
                         st.json(parsed)
                         st.info("Yukarıdaki sonucu Manuel Giriş sekmesinden düzenleyebilirsiniz.")
+                    except json.JSONDecodeError:
+                        pass  # Zaten yukarıda ele alındı
                     except Exception as e:
                         st.error(f"AI analiz hatası: {e}")
             else:

@@ -12,7 +12,7 @@ from config.turkish_building_codes import (
     CEKME_MESAFESI_KURALLARI,
 )
 from config.room_defaults import oda_tipi_from_isim
-from utils.constants import MIN_YAPILASMAYA_UYGUN_ALAN
+from utils.constants import MIN_YAPILASMAYA_UYGUN_ALAN, KAT_ALAN_TOLERANS_ORANI
 
 
 # ── Metin Temizleme ──
@@ -102,7 +102,7 @@ def validate_kat(daireler: list[dict], kat_brut_alan: float, ortak_alan: float) 
     toplam_daire = sum(d.get("brut_alan", 0) for d in daireler)
     toplam = toplam_daire + ortak_alan
 
-    if toplam > kat_brut_alan * 1.05:  # %5 tolerans
+    if toplam > kat_brut_alan * KAT_ALAN_TOLERANS_ORANI:  # %5 tolerans
         sonuclar.append({
             "kural": "Daire + Ortak alan ≤ Kat brüt alanı",
             "gecerli": False,

@@ -14,6 +14,7 @@ from config.furniture_library import (
     select_furniture_by_area,
     MIN_SIRKULASYON_BOSLUGU,
 )
+from utils.constants import PENCERE_ON_BOSLUK, MUTFAK_TEZGAH_DERINLIK
 
 
 @dataclass
@@ -125,7 +126,7 @@ def _place_kitchen_triangle(room: PlanRoom, furniture_list: list,
 
     # Tezgah duvarı boyunca: lavabo (merkez) — ocak (sol) — buzdolabı (sağ)
     if counter_wall == "north":
-        base_y = y + h - 0.60  # Tezgah derinliği
+        base_y = y + h - MUTFAK_TEZGAH_DERINLIK  # Tezgah derinliği
     else:
         base_y = y
 
@@ -352,7 +353,7 @@ def _get_window_zone(room, window) -> tuple | None:
     wall = window.get("wall", "south")
     pos = window.get("position", 0.5)
     ww = window.get("width", 1.20)
-    depth = 0.60  # Pencere önü boş alan derinliği
+    depth = PENCERE_ON_BOSLUK  # Pencere önü boş alan derinliği
 
     if wall == "south":
         wx = room.x + room.width * pos - ww / 2
