@@ -26,39 +26,29 @@ from dataset.dataset_rules import (
     WET_AREA_CLUSTERING, calculate_ideal_dimensions,
 )
 
-
 # ═══════════════════════════════════════════════════════════════
-# VERİ YAPILARI
-# ═══════════════════════════════════════════════════════════════
-
-@dataclass
-class RoomSlot:
-    """Yerleştirme öncesi oda slotu."""
-    name: str
-    room_type: str
-    target_area: float
-    min_width: float = 2.0
-    priority: int = 5         # Dış cephe önceliği (1=en yüksek)
-    is_wet: bool = False
-    placed: bool = False
-    # Yerleştirme sonrası
-    x: float = 0.0
-    y: float = 0.0
-    width: float = 0.0
-    height: float = 0.0
-
-
-# ═══════════════════════════════════════════════════════════════
-# LAYOUT TİPLERİ
+# ALT MODÜLLERDEN İÇE AKTARIMLAR
 # ═══════════════════════════════════════════════════════════════
 
-LAYOUT_TYPES = [
-    "center_corridor",     # Merkez koridor (klasik)
-    "l_shape",             # L-şekilli koridor
-    "t_shape",             # T-şekilli koridor
-    "short_corridor",      # Kısa koridor (kompakt)
-    "open_plan",           # Salon-mutfak açık plan
-]
+from core.geometry.room_slots import RoomSlot, _create_room_slots, _default_room_program  # noqa: F401,E501
+from core.geometry.corridor_layouts import (  # noqa: F401
+    LAYOUT_TYPES,
+    _select_layout_type,
+    _create_corridor_spine,
+    _create_center_corridor,
+    _create_l_corridor,
+    _create_t_corridor,
+    _create_short_corridor,
+    _create_open_plan_corridor,
+)
+from core.geometry.room_placement import (  # noqa: F401
+    _get_sun_zone,
+    _place_rooms_in_zone,
+    _place_single_room,
+    _find_best_zone,
+    _force_place_remaining,
+)
+from core.geometry.plan_finalization import _convert_to_plan_rooms  # noqa: F401
 
 
 # ═══════════════════════════════════════════════════════════════
