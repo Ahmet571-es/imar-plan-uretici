@@ -33,6 +33,7 @@ def _place_wet_rooms_adjacent(wet_slots: list[RoomSlot], zone: dict,
 
     Ortak tesisat şaftı oluşturmak için ıslak hacimler yan yana veya
     üst üste dizilir. Sıralama: mutfak -> banyo -> wc.
+    Mutfak üst üste, banyo ve wc yan yana yerleştirilir (duvar paylaşımı).
     """
     if not wet_slots:
         return
@@ -44,29 +45,174 @@ def _place_wet_rooms_adjacent(wet_slots: list[RoomSlot], zone: dict,
     tip_oncelik = {"mutfak": 0, "banyo": 1, "wc": 2}
     wet_slots.sort(key=lambda s: tip_oncelik.get(s.room_type, 9))
 
-    # Tüm ıslak hacimleri bölge genişliğince yan yana veya üst üste diz
+    # Banyo ve WC'yi yan yana yerleştirmek için ayır
+    banyo_slot = None
+    wc_slot = None
+    mutfak_slot = None
+    diger_slots = []
+
+    for s in wet_slots:
+        if s.placed:
+            continue
+        if s.room_type == "banyo" and banyo_slot is None:
+            banyo_slot = s
+        elif s.room_type == "wc" and wc_slot is None:
+            wc_slot = s
+        elif s.room_type == "mutfak" and mutfak_slot is None:
+            mutfak_slot = s
+        else:
+            diger_slots.append(s)
+
     current_y = zy
 
-    for slot in wet_slots:
+    # Önce mutfak — bölge genişliğinde üste yerleşir
+    if mutfak_slot and not mutfak_slot.placed:
+        remaining_h = zy + zh - current_y
+        if remaining_h >= mutfak_slot.min_width:
+            room_w = zw
+            room_h = mutfak_slot.target_area / room_w if room_w > 0 else 3.0
+            room_h = max(mutfak_slot.min_width, min(room_h, remaining_h))
+
+            # En-boy oranı kontrolü
+            aspect = (min(room_w, room_h) / max(room_w, room_h)
+                      if max(room_w, room_h) > 0 else 0.5)
+            min_aspect = ROOM_ASPECT_RATIOS.get("mutfak", {}).get("min", 0.35)
+            if aspect < min_aspect and room_h < room_w:
+                room_h = max(room_h, room_w * min_aspect)
+                room_h = min(room_h, zy + zh - current_y)
+
+            mutfak_slot.x = round(zx, 2)
+            mutfak_slot.y = round(current_y, 2)
+            mutfak_slot.width = round(room_w, 2)
+            mutfak_slot.height = round(room_h, 2)
+            mutfak_slot.placed = True
+
+            rooms.append(PlanRoom(
+                name=mutfak_slot.name, room_type=mutfak_slot.room_type,
+                x=mutfak_slot.x, y=mutfak_slot.y,
+                width=mutfak_slot.width, height=mutfak_slot.height,
+                has_exterior_wall=False, facing_direction="",
+            ))
+            current_y += room_h
+
+    # Banyo ve WC yan yana — mutfağın hemen altına, duvar paylaşarak
+    if banyo_slot and wc_slot and not banyo_slot.placed and not wc_slot.placed:
+        remaining_h = zy + zh - current_y
+        toplam_alan = banyo_slot.target_area + wc_slot.target_area
+
+        if remaining_h >= 2.0 and zw >= 2.4:
+            # Banyo ve WC'yi yan yana yerleştir — genişliği alana göre böl
+            banyo_oran = banyo_slot.target_area / toplam_alan
+            banyo_w = max(banyo_slot.min_width, zw * banyo_oran)
+            wc_w = max(wc_slot.min_width, zw - banyo_w)
+
+            # Genişlikler bölgeye sığmıyorsa oranla düzelt
+            if banyo_w + wc_w > zw:
+                oran = zw / (banyo_w + wc_w)
+                banyo_w *= oran
+                wc_w *= oran
+
+            banyo_h = banyo_slot.target_area / banyo_w if banyo_w > 0 else 2.5
+            wc_h = wc_slot.target_area / wc_w if wc_w > 0 else 2.0
+
+            # Her ikisi de kalan yüksekliğe sığmalı
+            banyo_h = max(banyo_slot.min_width, min(banyo_h, remaining_h))
+            wc_h = max(wc_slot.min_width, min(wc_h, remaining_h))
+
+            # Aynı yükseklikte hizala (daha düzenli görünüm)
+            ortak_h = max(banyo_h, wc_h)
+            ortak_h = min(ortak_h, remaining_h)
+
+            # Banyo — sol taraf
+            banyo_slot.x = round(zx, 2)
+            banyo_slot.y = round(current_y, 2)
+            banyo_slot.width = round(banyo_w, 2)
+            banyo_slot.height = round(ortak_h, 2)
+            banyo_slot.placed = True
+
+            rooms.append(PlanRoom(
+                name=banyo_slot.name, room_type=banyo_slot.room_type,
+                x=banyo_slot.x, y=banyo_slot.y,
+                width=banyo_slot.width, height=banyo_slot.height,
+                has_exterior_wall=False, facing_direction="",
+            ))
+
+            # WC — banyonun hemen sağında (duvar paylaşarak)
+            wc_slot.x = round(zx + banyo_w, 2)
+            wc_slot.y = round(current_y, 2)
+            wc_slot.width = round(wc_w, 2)
+            wc_slot.height = round(ortak_h, 2)
+            wc_slot.placed = True
+
+            rooms.append(PlanRoom(
+                name=wc_slot.name, room_type=wc_slot.room_type,
+                x=wc_slot.x, y=wc_slot.y,
+                width=wc_slot.width, height=wc_slot.height,
+                has_exterior_wall=False, facing_direction="",
+            ))
+
+            current_y += ortak_h
+        else:
+            # Yer yetersiz — üst üste yerleştir (eski yöntem)
+            for slot in [banyo_slot, wc_slot]:
+                if slot.placed:
+                    continue
+                rem = zy + zh - current_y
+                if rem < slot.min_width:
+                    continue
+                room_w = zw
+                room_h = slot.target_area / room_w if room_w > 0 else 2.5
+                room_h = max(slot.min_width, min(room_h, rem))
+
+                slot.x = round(zx, 2)
+                slot.y = round(current_y, 2)
+                slot.width = round(room_w, 2)
+                slot.height = round(room_h, 2)
+                slot.placed = True
+
+                rooms.append(PlanRoom(
+                    name=slot.name, room_type=slot.room_type,
+                    x=slot.x, y=slot.y,
+                    width=slot.width, height=slot.height,
+                    has_exterior_wall=False, facing_direction="",
+                ))
+                current_y += room_h
+    else:
+        # Tek tek yerleştir (biri yoksa)
+        for slot in [banyo_slot, wc_slot]:
+            if slot is None or slot.placed:
+                continue
+            remaining_h = zy + zh - current_y
+            if remaining_h < slot.min_width:
+                continue
+            room_w = zw
+            room_h = slot.target_area / room_w if room_w > 0 else 2.5
+            room_h = max(slot.min_width, min(room_h, remaining_h))
+
+            slot.x = round(zx, 2)
+            slot.y = round(current_y, 2)
+            slot.width = round(room_w, 2)
+            slot.height = round(room_h, 2)
+            slot.placed = True
+
+            rooms.append(PlanRoom(
+                name=slot.name, room_type=slot.room_type,
+                x=slot.x, y=slot.y,
+                width=slot.width, height=slot.height,
+                has_exterior_wall=False, facing_direction="",
+            ))
+            current_y += room_h
+
+    # Kalan ıslak hacimler (varsa) üst üste dizilir
+    for slot in diger_slots:
         if slot.placed:
             continue
-
         remaining_h = zy + zh - current_y
         if remaining_h < slot.min_width:
             continue
-
-        # Bölge genişliğini tam kullan — tüm ıslak hacimler aynı x'te
         room_w = zw
-        room_h = slot.target_area / room_w if room_w > 0 else 3.0
+        room_h = slot.target_area / room_w if room_w > 0 else 2.5
         room_h = max(slot.min_width, min(room_h, remaining_h))
-
-        # En-boy oranı kontrolü
-        aspect = (min(room_w, room_h) / max(room_w, room_h)
-                  if max(room_w, room_h) > 0 else 0.5)
-        min_aspect = ROOM_ASPECT_RATIOS.get(slot.room_type, {}).get("min", 0.35)
-        if aspect < min_aspect and room_h < room_w:
-            room_h = max(room_h, room_w * min_aspect)
-            room_h = min(room_h, zy + zh - current_y)
 
         slot.x = round(zx, 2)
         slot.y = round(current_y, 2)
@@ -78,11 +224,8 @@ def _place_wet_rooms_adjacent(wet_slots: list[RoomSlot], zone: dict,
             name=slot.name, room_type=slot.room_type,
             x=slot.x, y=slot.y,
             width=slot.width, height=slot.height,
-            has_exterior_wall=False,
-            facing_direction="",
+            has_exterior_wall=False, facing_direction="",
         ))
-
-        # Bir sonraki ıslak hacim hemen altına yerleşir
         current_y += room_h
 
     zone["remaining_area"] = max(0, zw * (zy + zh - current_y))

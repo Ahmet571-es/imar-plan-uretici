@@ -83,41 +83,43 @@ def _render_kalite_raporu(plan_data: dict) -> None:
 
 
 def _render_export_buttons(plan_data: dict, plan_index: int) -> None:
-    """SVG ve DXF disa aktarma butonlarini gosterir.
+    """SVG ve DXF dışa aktarma butonlarını gösterir.
 
     Args:
-        plan_data: {"plan": FloorPlan, ...}
-        plan_index: Plan sira numarasi (buton key'leri icin).
+        plan_data: {"plan": FloorPlan, ...} plan verisi sözlüğü.
+        plan_index: Plan sıra numarası (buton key'leri için benzersizlik sağlar).
     """
     col_svg, col_dxf = st.columns(2)
 
     with col_svg:
         try:
             from export.svg_exporter import export_svg_string
+            # Plan nesnesinden SVG çıktısı üret
             svg_str = export_svg_string(plan_data["plan"])
             st.download_button(
-                label="SVG Indir",
+                label="📐 SVG İndir",
                 data=svg_str,
                 file_name=f"plan_{plan_index + 1}.svg",
                 mime="image/svg+xml",
                 key=f"dl_svg_{plan_index}",
             )
         except Exception as e:
-            st.warning(f"SVG olusturulamadi: {e}")
+            st.warning(f"SVG oluşturulamadı: {e}")
 
     with col_dxf:
         try:
             from export.dxf_exporter import export_dxf_bytes
+            # Plan nesnesinden DXF bayt dizisi üret
             dxf_bytes = export_dxf_bytes(plan_data["plan"])
             st.download_button(
-                label="DXF Indir (AutoCAD)",
+                label="📐 DXF İndir",
                 data=dxf_bytes,
                 file_name=f"plan_{plan_index + 1}.dxf",
                 mime="application/dxf",
                 key=f"dl_dxf_{plan_index}",
             )
         except Exception as e:
-            st.warning(f"DXF olusturulamadi: {e}")
+            st.warning(f"DXF oluşturulamadı: {e}")
 
 
 def sayfa_plan():

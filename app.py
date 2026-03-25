@@ -1485,8 +1485,14 @@ sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
 try:
     sayfa_fonksiyonu()
 except Exception as e:
+    import logging as _logging
+    _logging.getLogger(__name__).exception("Sayfa yüklenirken hata: %s", e)
     st.error(f"Sayfa yüklenirken hata oluştu: {e}")
     st.info("Lütfen sayfayı yenileyin veya farklı parametrelerle tekrar deneyin.")
+    # Geliştirme modunda detaylı hata bilgisi göster
+    if os.environ.get("DEBUG", "").lower() in ("1", "true"):
+        import traceback
+        st.code(traceback.format_exc(), language="text")
 
 # ── Sonraki Adım butonu ──
 try:
