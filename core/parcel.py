@@ -2,13 +2,10 @@
 Parsel Geometrisi İşlemleri — Parsel oluşturma, görselleştirme, TKGM entegrasyonu.
 """
 
-import math
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.patches import FancyArrowPatch
 from shapely.geometry import Polygon
 
 from utils.geometry_helpers import (
@@ -62,6 +59,9 @@ class Parsel:
     def cevre(self) -> float:
         """Parsel çevresi (metre)."""
         return polygon_cevre(self.polygon)
+
+    # Önbellek: _kenarlar ve _acilar ilk erişimde hesaplanır, sonraki çağrılarda
+    # önbellekten döner (lazy cached property pattern).
 
     @property
     def kenarlar(self) -> list[float]:

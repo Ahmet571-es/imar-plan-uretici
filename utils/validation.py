@@ -2,6 +2,8 @@
 Yönetmelik Uyumluluk Kontrolü — Daire, oda ve parsel/imar düzeyinde validasyon.
 """
 
+import re
+
 from config.turkish_building_codes import (
     MIN_ODA_ALANLARI,
     validate_room,
@@ -10,7 +12,35 @@ from config.turkish_building_codes import (
     CEKME_MESAFESI_KURALLARI,
 )
 from config.room_defaults import oda_tipi_from_isim
-from utils.constants import MIN_YAPILASMAYA_UYGUN_ALAN, KAT_YUKSEKLIGI
+from utils.constants import MIN_YAPILASMAYA_UYGUN_ALAN
+
+
+# ── Metin Temizleme ──
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_MAX_INPUT_LENGTH = 1000
+
+
+def sanitize_text_input(text: str) -> str:
+    """Kullanıcı metin girdisini güvenli hale getirir.
+
+    - Baş/son boşlukları temizler
+    - HTML etiketlerini kaldırır (XSS önlemi)
+    - Maksimum 1000 karakterle sınırlar
+
+    Args:
+        text: Ham kullanıcı girdisi.
+
+    Returns:
+        Temizlenmiş metin.
+    """
+    if not isinstance(text, str):
+        return ""
+    text = text.strip()
+    text = _HTML_TAG_RE.sub("", text)
+    if len(text) > _MAX_INPUT_LENGTH:
+        text = text[:_MAX_INPUT_LENGTH]
+    return text
 
 
 def validate_daire(odalar: list[dict], brut_alan: float) -> list[dict]:

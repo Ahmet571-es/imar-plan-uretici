@@ -1,5 +1,10 @@
 """
 Database Bağlantı Yönetimi — SQLAlchemy + SQLite.
+
+GÜVENLİK NOTU: Tüm veritabanı işlemleri SQLAlchemy ORM üzerinden yapılmaktadır.
+Ham SQL string birleştirmesi (string formatting) kullanılmamaktadır.
+ORM parametrik sorgular ürettiğinden SQL injection riski yoktur.
+PRAGMA komutları sabit değerlerdir ve kullanıcı girdisi içermez.
 """
 
 import os

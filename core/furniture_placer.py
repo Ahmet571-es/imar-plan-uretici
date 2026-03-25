@@ -7,7 +7,6 @@ Otomatik Mobilya Yerleştirme — Oda boyutlarına göre uygun mobilyaları konu
 - Plan renderer ile entegrasyon için render verisi
 """
 
-import math
 from dataclasses import dataclass, field
 from core.plan_scorer import PlanRoom
 from config.furniture_library import (
