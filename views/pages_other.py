@@ -313,7 +313,7 @@ def sayfa_firsat():
     if not results:
         st.info("Henüz ajan sonucu yok. Ajan Kontrol Paneli'nden ajanları çalıştırın.")
         if st.button("🤖 Ajan Paneline Git"):
-            st.session_state.aktif_sayfa = "23_ajan_panel"
+            st.session_state._nav_target = "23_ajan_panel"
             st.rerun()
         return
 

@@ -35,8 +35,8 @@ SAYFA_SIRASI = [
 
 
 def _navigate(page: str):
-    """Sayfa değiştirme — session_state güncelle (st.rerun ile kullanılır)."""
-    st.session_state.aktif_sayfa = page
+    """Sayfa değiştirme — kuyruk sistemi ile."""
+    st.session_state._nav_target = page
 
 
 def render_progress_bar():
@@ -76,7 +76,7 @@ def render_progress_bar():
 
 
 def render_next_step_button(current_page: str):
-    """Mevcut sayfadan sonraki adıma geçiş butonu."""
+    """Mevcut sayfadan sonraki adıma geçiş butonu — on_click + kuyruk."""
     page_keys = [s[0] for s in SAYFA_SIRASI]
     if current_page not in page_keys:
         return
@@ -89,11 +89,10 @@ def render_next_step_button(current_page: str):
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button(f"Sonraki Adim: {next_label} →",
-                         type="primary", use_container_width=True,
-                         key=f"next_{current_page}"):
-                st.session_state.aktif_sayfa = next_key
-                st.rerun()
+            st.button(f"Sonraki Adim: {next_label} →",
+                      type="primary", use_container_width=True,
+                      key=f"next_{current_page}",
+                      on_click=_navigate, args=(next_key,))
 
     # Önceki adım butonu
     if idx > 0:
@@ -101,11 +100,10 @@ def render_next_step_button(current_page: str):
         prev_label = SAYFA_SIRASI[idx - 1][1]
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button(f"← Onceki: {prev_label}",
-                         use_container_width=True,
-                         key=f"prev_{current_page}"):
-                st.session_state.aktif_sayfa = prev_key
-                st.rerun()
+            st.button(f"← Onceki: {prev_label}",
+                      use_container_width=True,
+                      key=f"prev_{current_page}",
+                      on_click=_navigate, args=(prev_key,))
 
 
 def get_sidebar_style(page_key: str) -> str:
