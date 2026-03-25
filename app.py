@@ -1185,10 +1185,14 @@ def sayfa_crm():
                 st.markdown(f"**{durum}**")
                 filtered = [m for m in musteriler if m["durum"] == durum]
                 for m in filtered:
+                    # GÜVENLİK: Kullanıcı girdisi HTML'e eklenmeden önce temizlenir (XSS önlemi)
+                    import html as _html_mod
+                    _safe_ad = _html_mod.escape(str(m['ad']))
+                    _safe_tel = _html_mod.escape(str(m.get('tel', '')))
                     st.markdown(
                         f"<div style='background:#f0f0f0; padding:8px; "
                         f"border-radius:4px; margin:4px 0; font-size:12px;'>"
-                        f"<b>{m['ad']}</b><br>{m.get('tel','')}</div>",
+                        f"<b>{_safe_ad}</b><br>{_safe_tel}</div>",
                         unsafe_allow_html=True,
                     )
     else:
@@ -1264,9 +1268,12 @@ def sayfa_workflow():
             days = g["sure_gun"]
             bar_width = max(days * 3, 10)
             left_offset = cumulative_day * 3
+            # GÜVENLİK: Kullanıcı girdisi HTML'e eklenmeden önce temizlenir (XSS önlemi)
+            import html as _html_mod
+            _safe_gorev = _html_mod.escape(str(g['gorev']))
             st.markdown(
                 f"<div style='display:flex; align-items:center; margin:2px 0;'>"
-                f"<div style='width:200px; font-size:11px;'>{g['gorev']}</div>"
+                f"<div style='width:200px; font-size:11px;'>{_safe_gorev}</div>"
                 f"<div style='margin-left:{left_offset}px; background:#1E88E5; "
                 f"height:18px; width:{bar_width}px; border-radius:3px; "
                 f"color:white; font-size:10px; padding:1px 4px;'>"

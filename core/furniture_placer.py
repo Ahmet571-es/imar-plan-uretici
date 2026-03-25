@@ -10,7 +10,6 @@ Otomatik Mobilya Yerleştirme — Oda boyutlarına göre uygun mobilyaları konu
 from dataclasses import dataclass, field
 from core.plan_scorer import PlanRoom
 from config.furniture_library import (
-    get_furniture_for_room,
     select_furniture_by_area,
     MIN_SIRKULASYON_BOSLUGU,
 )

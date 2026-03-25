@@ -4,9 +4,7 @@ Geometri Yardımcı Fonksiyonları — Parsel oluşturma, çekme hesapları, ala
 
 import math
 import numpy as np
-from shapely.geometry import Polygon, LineString, MultiPolygon
-from shapely.ops import unary_union
-from shapely.affinity import translate, rotate
+from shapely.geometry import Polygon, MultiPolygon
 
 
 def kenarlar_ve_acilardan_polygon(kenarlar: list[float], acilar: list[float]) -> Polygon:
