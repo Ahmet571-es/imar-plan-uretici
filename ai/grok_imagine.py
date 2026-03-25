@@ -403,6 +403,89 @@ def render_3d_to_photorealistic(
     return base_result
 
 
+def generate_6_angle_pack(
+    api_key: str,
+    kat_sayisi: int = 4,
+    taban_en: float = 20.0,
+    taban_boy: float = 15.0,
+    kat_yuksekligi: float = 3.0,
+    daire_sayisi_per_kat: int = 2,
+    daire_tipi: str = "3+1",
+    daire_alan: float = 120.0,
+    balkon_tipi: str = "cam_korkuluk",
+    mimari_stil_key: str = "modern_minimalist",
+    sehir: str = "İstanbul",
+    ek_prompt: str = "",
+    progress_callback=None,
+) -> list[ImageResult]:
+    """6 farklı kamera açısından fotorealistik render paketi üretir.
+
+    Açılar: Ön cephe, köşe perspektif, yan cephe, kuşbakışı, arka bahçe, gece.
+    Her açı için optimize edilmiş prompt ve aspect ratio kullanılır.
+
+    Args:
+        api_key: xAI API anahtarı.
+        kat_sayisi: Bina kat sayısı.
+        taban_en: Bina taban genişliği (m).
+        taban_boy: Bina taban derinliği (m).
+        kat_yuksekligi: Kat yüksekliği (m).
+        daire_sayisi_per_kat: Her kattaki daire sayısı.
+        daire_tipi: Daire tipi.
+        daire_alan: Daire alanı (m²).
+        balkon_tipi: Balkon tipi anahtarı.
+        mimari_stil_key: Mimari stil anahtarı.
+        sehir: Şehir adı.
+        ek_prompt: Kullanıcının ek talimatı.
+        progress_callback: İlerleme güncellemesi için callback(index, total, angle_name).
+
+    Returns:
+        6 ImageResult listesi.
+    """
+    from visualization_3d.camera_mapping import PRESET_CAMERAS
+    from prompts.exterior_prompts import build_exterior_prompt
+
+    results = []
+    angles = list(PRESET_CAMERAS.items())
+
+    for i, (angle_key, angle_config) in enumerate(angles):
+        if progress_callback:
+            progress_callback(i, len(angles), angle_config["isim"])
+
+        # Aydınlatma override (gece açısı için)
+        aydinlatma = angle_config.get("aydinlatma_override", "Golden hour warm sunset")
+
+        prompt = build_exterior_prompt(
+            kat_sayisi=kat_sayisi,
+            taban_en=taban_en,
+            taban_boy=taban_boy,
+            kat_yuksekligi=kat_yuksekligi,
+            daire_sayisi_per_kat=daire_sayisi_per_kat,
+            daire_tipi=daire_tipi,
+            daire_alan=daire_alan,
+            balkon_tipi=balkon_tipi,
+            mimari_stil_key=mimari_stil_key,
+            sehir=sehir,
+            kamera_acisi=angle_config["prompt"],
+            aydinlatma=aydinlatma,
+        )
+
+        if ek_prompt:
+            prompt += f"\nAdditional requirements: {ek_prompt}"
+
+        result = generate_image(
+            prompt=prompt,
+            api_key=api_key,
+            aspect_ratio=angle_config.get("aspect_ratio", "16:9"),
+            render_type="6_angle_pack",
+            style=angle_config["isim"],
+        )
+        result.metadata["angle_key"] = angle_key
+        result.metadata["camera_eye"] = angle_config["eye"]
+        results.append(result)
+
+    return results
+
+
 def generate_style_comparison(
     prompt_builder_func,
     prompt_kwargs: dict,

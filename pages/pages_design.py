@@ -205,17 +205,22 @@ def sayfa_ai_tefris():
 
 
 def sayfa_3d():
-    """Sayfa 8 — 3D Görselleştirme + Plotly Canvas → Grok Imagine Pipeline.
+    """Sayfa 8 — 3D Görselleştirme + Grok Imagine Fotorealistik Render.
 
-    Pipeline stratejisi (sıfır hata hedefi):
-    1. Sunucu tarafı Kaleido ile 3D model yakalama (güvenilir)
-    2. Yakalanan görüntü → text-to-image ile fotorealistik render (wireframe edit sorunu yok)
-    3. Opsiyonel: edit endpoint ile ince ayar (fotorealistik → fotorealistik, güvenilir)
-    4. Manuel screenshot upload fallback
-    5. Race condition koruması (processing flag)
+    Özellikler:
+    - Plotly 3D interaktif model
+    - Rota A: Plotly kamera açısını okuyup prompt'a aktarma
+    - Rota D: 6 farklı kamera açısından otomatik render paketi
+    - Tekli render (mevcut açıdan)
+    - Multi-turn düzenleme
+    - Race condition koruması
     """
     from visualization_3d.building_model import build_3d_model
     from visualization_3d.plotly_capture import capture_plotly_to_bytes, is_kaleido_available
+    from visualization_3d.camera_mapping import (
+        get_plotly_camera_eye, plotly_camera_to_prompt, set_plotly_camera,
+        PRESET_CAMERAS,
+    )
 
     st.header("🏗️ 3D Görselleştirme")
 
@@ -229,6 +234,7 @@ def sayfa_3d():
         st.warning("Önce bir kat planı üretin ve seçin.")
         return
 
+    # ── 3D Model Kontrolleri ──
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         kat = st.number_input("Kat Sayısı", 1, 20, imar.kat_adedi if imar else 4, key="3d_kat")
@@ -238,6 +244,25 @@ def sayfa_3d():
         exploded = st.checkbox("Patlak Görünüm", key="3d_explode")
     with col4:
         sel_floor = st.selectbox("Kat Filtre", ["Tümü"] + [f"Kat {i+1}" for i in range(kat)], key="3d_floor")
+
+    # ── Kamera açısı seçimi (Rota A) ──
+    st.caption("Kamera açısını seçin — Plotly modeli ve AI render bu açıdan üretilir")
+    cam_col1, cam_col2 = st.columns([3, 1])
+    with cam_col1:
+        preset_options = {k: v["isim"] for k, v in PRESET_CAMERAS.items()}
+        preset_options["custom"] = "Özel (Plotly varsayılan)"
+        secili_kamera = st.selectbox(
+            "Kamera Açısı",
+            list(preset_options.keys()),
+            format_func=lambda x: preset_options[x],
+            index=1,  # corner_elevated varsayılan
+            key="3d_camera_preset",
+        )
+    with cam_col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if secili_kamera != "custom":
+            cam_info = PRESET_CAMERAS[secili_kamera]
+            st.caption(f"eye: ({cam_info['eye']['x']:.1f}, {cam_info['eye']['y']:.1f}, {cam_info['eye']['z']:.1f})")
 
     selected_floor = None if sel_floor == "Tümü" else int(sel_floor.split()[-1]) - 1
     parsel_coords = list(parsel.polygon.exterior.coords) if parsel else None
@@ -250,38 +275,23 @@ def sayfa_3d():
         exploded=exploded,
         selected_floor=selected_floor,
     )
+
+    # Seçilen kamera açısını uygula
+    if secili_kamera != "custom" and secili_kamera in PRESET_CAMERAS:
+        set_plotly_camera(fig, PRESET_CAMERAS[secili_kamera]["eye"])
+
     st.plotly_chart(fig, use_container_width=True, key="chart_3d_main")
 
-    # ── 3D Model → Grok Imagine Fotorealistik Render Pipeline ──
+    # ── Kamera açısını oku ve prompt'a çevir (Rota A) ──
+    current_eye = get_plotly_camera_eye(fig)
+    camera_prompt = plotly_camera_to_prompt(current_eye["x"], current_eye["y"], current_eye["z"])
+
+    # ── Fotorealistik AI Render Bölümü ──
     st.markdown("---")
-    st.subheader("3D Model → Fotorealistik AI Render")
+    st.subheader("Fotorealistik AI Render")
 
     grok_key = st.session_state.get("grok_api_key", "")
-
-    # Stil ve prompt ayarları
-    from prompts.style_configs import STYLE_VARIANTS, LIGHTING_OPTIONS
-
-    render_col1, render_col2 = st.columns(2)
-    with render_col1:
-        ai_stil = st.selectbox(
-            "Mimari Stil",
-            list(STYLE_VARIANTS.keys()),
-            format_func=lambda x: STYLE_VARIANTS[x]["isim"],
-            key="3d_ai_stil",
-        )
-    with render_col2:
-        ai_aydinlatma = st.select_slider(
-            "Aydınlatma",
-            LIGHTING_OPTIONS,
-            value="Golden hour warm sunset",
-            key="3d_ai_aydinlatma",
-        )
-
-    ek_prompt = st.text_input(
-        "Ek talimat (opsiyonel)",
-        placeholder="Örn: Cam cephe ekle, çevrede ağaçlar olsun, gece görünümü...",
-        key="3d_ek_prompt",
-    )
+    from prompts.style_configs import STYLE_VARIANTS
 
     # Bina boyutları
     hesap = st.session_state.get("hesaplama")
@@ -291,104 +301,182 @@ def sayfa_3d():
     else:
         taban_en, taban_boy = 20.0, 15.0
 
-    # Kaleido durumu
-    kaleido_ok = is_kaleido_available()
+    bina_prog = st.session_state.get("bina_programi")
+    if bina_prog and bina_prog.katlar and bina_prog.katlar[0].daireler:
+        d0 = bina_prog.katlar[0].daireler[0]
+        daire_tipi = d0.tip
+        daire_alan = d0.brut_m2
+        daire_per_kat = len(bina_prog.katlar[0].daireler)
+    else:
+        daire_tipi, daire_alan, daire_per_kat = "3+1", 120.0, 2
 
-    # Race condition koruması
+    # Stil seçimi
+    render_col1, render_col2 = st.columns(2)
+    with render_col1:
+        ai_stil = st.selectbox(
+            "Mimari Stil",
+            list(STYLE_VARIANTS.keys()),
+            format_func=lambda x: STYLE_VARIANTS[x]["isim"],
+            key="3d_ai_stil",
+        )
+    with render_col2:
+        sehir = st.text_input("Şehir", "İstanbul", key="3d_sehir")
+
+    ek_prompt = st.text_input(
+        "Ek talimat (opsiyonel)",
+        placeholder="Örn: Cam cephe ekle, çevrede ağaçlar olsun...",
+        key="3d_ek_prompt",
+    )
+
     is_processing = st.session_state.get("_3d_render_processing", False)
 
-    # ── Ana render butonu ──
-    btn_col1, btn_col2 = st.columns(2)
-    with btn_col1:
-        render_btn = st.button(
-            "3D Görünümü Yakala ve AI Render Oluştur" if kaleido_ok else "AI Render Oluştur (Parametrelerden)",
-            type="primary",
-            key="btn_3d_render",
-            disabled=is_processing,
-        )
-    with btn_col2:
-        uploaded = st.file_uploader(
-            "Veya ekran görüntüsü yükle",
-            type=["png", "jpg", "jpeg"],
-            key="3d_screenshot_upload",
-        )
+    # ── 3 render modu ──
+    render_mode = st.radio(
+        "Render Modu",
+        ["Bu Açıdan Tekli Render", "6 Açıdan Render Paketi", "Ekran Görüntüsünden Render"],
+        horizontal=True,
+        key="3d_render_mode",
+    )
 
-    if not kaleido_ok:
-        st.caption(
-            "Kaleido kurulu değil — 3D yakalama devre dışı, doğrudan bina parametrelerinden render üretilecek. "
-            "Kaleido kurmak için: `pip install kaleido`"
-        )
+    if render_mode == "Bu Açıdan Tekli Render":
+        # ── Rota A: Mevcut kamera açısından tekli render ──
+        st.info(f"Kamera açısı: {camera_prompt[:80]}...")
 
-    if render_btn and not is_processing:
-        if not grok_key:
-            st.warning("Sidebar'dan Grok/xAI API Key girin.")
-        else:
-            # Processing flag — race condition koruması
-            st.session_state["_3d_render_processing"] = True
-
-            try:
-                # Adım 1: 3D model yakalama (Kaleido varsa)
-                captured_bytes = b""
-                if kaleido_ok:
-                    with st.spinner("3D model görüntüsü yakalanıyor..."):
-                        captured_bytes = capture_plotly_to_bytes(fig)
-
-                    if captured_bytes:
-                        st.success(f"3D görüntü yakalandı ({len(captured_bytes) // 1024}KB)")
-                        with st.expander("Yakalanan 3D Görüntü", expanded=False):
-                            st.image(captured_bytes, use_container_width=True)
-
-                # Adım 2: Fotorealistik render üret
-                from ai.grok_imagine import render_3d_to_photorealistic
-                with st.spinner("Grok Imagine fotorealistik render üretiyor... (15-45 saniye)"):
-                    result = render_3d_to_photorealistic(
-                        captured_image_bytes=captured_bytes,
-                        api_key=grok_key,
-                        kat_sayisi=kat,
-                        taban_en=taban_en,
-                        taban_boy=taban_boy,
-                        mimari_stil_key=ai_stil,
-                        aydinlatma=ai_aydinlatma,
-                        ek_prompt=ek_prompt,
-                    )
-
-                _handle_3d_render_result(result, STYLE_VARIANTS.get(ai_stil, {}).get("isim", ""))
-
-            finally:
-                st.session_state["_3d_render_processing"] = False
-
-    # ── Manuel screenshot upload ──
-    if uploaded is not None and not is_processing:
-        img_bytes = uploaded.read()
-        st.image(img_bytes, caption="Yüklenen 3D görüntü", use_container_width=True)
-
-        if st.button("Yüklenen Görüntüden AI Render Oluştur", type="primary", key="btn_3d_upload_render"):
+        if st.button("Bu Açıdan AI Render Oluştur", type="primary", key="btn_3d_single", disabled=is_processing):
             if not grok_key:
                 st.warning("Sidebar'dan Grok/xAI API Key girin.")
             else:
                 st.session_state["_3d_render_processing"] = True
                 try:
-                    from ai.grok_imagine import render_3d_to_photorealistic
-                    with st.spinner("Fotorealistik render üretiliyor..."):
-                        result = render_3d_to_photorealistic(
-                            captured_image_bytes=img_bytes,
-                            api_key=grok_key,
-                            kat_sayisi=kat,
-                            taban_en=taban_en,
-                            taban_boy=taban_boy,
-                            mimari_stil_key=ai_stil,
-                            aydinlatma=ai_aydinlatma,
-                            ek_prompt=ek_prompt,
+                    from prompts.exterior_prompts import build_exterior_prompt
+                    from ai.grok_imagine import generate_image
+
+                    # Kamera açısı prompt'tan
+                    if secili_kamera != "custom" and secili_kamera in PRESET_CAMERAS:
+                        kamera_prompt = PRESET_CAMERAS[secili_kamera]["prompt"]
+                        aydinlatma = PRESET_CAMERAS[secili_kamera].get(
+                            "aydinlatma_override", "Golden hour warm sunset"
                         )
-                    _handle_3d_render_result(result, STYLE_VARIANTS.get(ai_stil, {}).get("isim", ""))
+                        aspect = PRESET_CAMERAS[secili_kamera].get("aspect_ratio", "16:9")
+                    else:
+                        kamera_prompt = camera_prompt
+                        aydinlatma = "Golden hour warm sunset"
+                        aspect = "16:9"
+
+                    prompt = build_exterior_prompt(
+                        kat_sayisi=kat,
+                        taban_en=taban_en,
+                        taban_boy=taban_boy,
+                        daire_sayisi_per_kat=daire_per_kat,
+                        daire_tipi=daire_tipi,
+                        daire_alan=daire_alan,
+                        mimari_stil_key=ai_stil,
+                        sehir=sehir,
+                        kamera_acisi=kamera_prompt,
+                        aydinlatma=aydinlatma,
+                    )
+                    if ek_prompt:
+                        prompt += f"\nAdditional requirements: {ek_prompt}"
+
+                    with st.spinner("Grok Imagine fotorealistik render üretiyor..."):
+                        result = generate_image(
+                            prompt=prompt,
+                            api_key=grok_key,
+                            aspect_ratio=aspect,
+                            render_type="3d_single_angle",
+                            style=STYLE_VARIANTS[ai_stil]["isim"],
+                        )
+
+                    _handle_3d_render_result(result, STYLE_VARIANTS[ai_stil]["isim"])
                 finally:
                     st.session_state["_3d_render_processing"] = False
 
-    # ── Son render sonucu ve düzenleme ──
+    elif render_mode == "6 Açıdan Render Paketi":
+        # ── Rota D: 6 farklı açıdan render paketi ──
+        st.info("6 farklı kamera açısından fotorealistik render üretilecek: "
+                "Ön cephe, köşe perspektif, yan cephe, kuşbakışı, arka bahçe, gece görünümü")
+
+        if st.button("6 Açıdan Render Paketi Oluştur", type="primary", key="btn_3d_6angle", disabled=is_processing):
+            if not grok_key:
+                st.warning("Sidebar'dan Grok/xAI API Key girin.")
+            else:
+                st.session_state["_3d_render_processing"] = True
+                try:
+                    from ai.grok_imagine import generate_6_angle_pack
+
+                    progress = st.progress(0, "Render paketi başlatılıyor...")
+
+                    def update_progress(idx, total, name):
+                        progress.progress((idx) / total, f"{name} render ediliyor... ({idx + 1}/{total})")
+
+                    results = generate_6_angle_pack(
+                        api_key=grok_key,
+                        kat_sayisi=kat,
+                        taban_en=taban_en,
+                        taban_boy=taban_boy,
+                        daire_sayisi_per_kat=daire_per_kat,
+                        daire_tipi=daire_tipi,
+                        daire_alan=daire_alan,
+                        mimari_stil_key=ai_stil,
+                        sehir=sehir,
+                        ek_prompt=ek_prompt,
+                        progress_callback=update_progress,
+                    )
+
+                    progress.progress(1.0, "Tamamlandı!")
+
+                    # Sonuçları göster — 2x3 grid
+                    st.session_state["6_angle_results"] = results
+                    success_count = sum(1 for r in results if r.success)
+                    st.success(f"6 açıdan {success_count} render tamamlandı!")
+
+                    _display_6_angle_grid(results)
+
+                finally:
+                    st.session_state["_3d_render_processing"] = False
+
+    else:
+        # ── Ekran görüntüsünden render ──
+        uploaded = st.file_uploader(
+            "3D modelin ekran görüntüsünü yükleyin",
+            type=["png", "jpg", "jpeg"],
+            key="3d_screenshot_upload",
+        )
+        if uploaded is not None:
+            img_bytes = uploaded.read()
+            st.image(img_bytes, caption="Yüklenen 3D görüntü", use_container_width=True)
+
+            if st.button("Yüklenen Görüntüden AI Render Oluştur", type="primary", key="btn_3d_upload", disabled=is_processing):
+                if not grok_key:
+                    st.warning("Sidebar'dan Grok/xAI API Key girin.")
+                else:
+                    st.session_state["_3d_render_processing"] = True
+                    try:
+                        from ai.grok_imagine import render_3d_to_photorealistic
+                        with st.spinner("Fotorealistik render üretiliyor..."):
+                            result = render_3d_to_photorealistic(
+                                captured_image_bytes=img_bytes,
+                                api_key=grok_key,
+                                kat_sayisi=kat,
+                                taban_en=taban_en,
+                                taban_boy=taban_boy,
+                                mimari_stil_key=ai_stil,
+                                ek_prompt=ek_prompt,
+                            )
+                        _handle_3d_render_result(result, STYLE_VARIANTS.get(ai_stil, {}).get("isim", ""))
+                    finally:
+                        st.session_state["_3d_render_processing"] = False
+
+    # ── Daha önce üretilmiş 6 açı paketi varsa göster ──
+    if st.session_state.get("6_angle_results") and render_mode != "6 Açıdan Render Paketi":
+        with st.expander("Son 6 Açı Render Paketi", expanded=False):
+            _display_6_angle_grid(st.session_state["6_angle_results"])
+
+    # ── Son tekli render sonucu ve düzenleme ──
     if st.session_state.get("3d_render_result"):
         result_data = st.session_state["3d_render_result"]
         st.markdown("---")
-        st.subheader("Fotorealistik Render Sonucu")
+        st.subheader("Son Render Sonucu")
 
         if result_data.get("image_data_b64"):
             from utils.image_utils import base64_to_image_bytes
@@ -400,7 +488,6 @@ def sayfa_3d():
                 if method:
                     st.caption(f"Yöntem: {method}")
 
-                # Düzenleme (fotorealistik → fotorealistik, edit endpoint güvenilir)
                 edit_text = st.text_input(
                     "Render'ı düzenle",
                     placeholder="Örn: Cephe rengini beyaz yap, daha fazla yeşillik ekle...",
@@ -423,6 +510,27 @@ def sayfa_3d():
                         _save_render_to_history(edit_result)
                     else:
                         st.error(f"Düzenleme hatası: {edit_result.error}")
+
+
+def _display_6_angle_grid(results):
+    """6 açı render sonuçlarını 2x3 grid olarak gösterir."""
+    from utils.image_utils import base64_to_image_bytes
+
+    rows = [results[i:i + 3] for i in range(0, len(results), 3)]
+    for row in rows:
+        cols = st.columns(3)
+        for j, res in enumerate(row):
+            with cols[j]:
+                if res.success and res.image_data:
+                    st.image(res.image_data, use_container_width=True)
+                    st.caption(res.style)
+                    _save_render_to_history(res)
+                elif res.success and res.image_url:
+                    st.image(res.image_url, use_container_width=True)
+                    st.caption(res.style)
+                    _save_render_to_history(res)
+                else:
+                    st.error(f"{res.style}: {res.error}")
 
 
 def _handle_3d_render_result(result, style_name: str):
