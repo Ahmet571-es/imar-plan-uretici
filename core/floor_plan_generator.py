@@ -970,59 +970,130 @@ def generate_multiple_plans(
     sun_direction: str = "south",
     plan_count: int = 3,
 ) -> list[dict]:
-    """Birden fazla plan alternatifi üretir — farklı layout tipleriyle."""
+    """Birden fazla plan alternatifi üretir — akıllı strateji seçimi ile.
+
+    Derinleştirilmiş algoritma:
+    1. Güneş yönüne göre giriş yönü optimizasyonu
+    2. Bina oranına göre en uygun layout tipleri seçimi
+    3. Daire tipine göre özellik kombinasyonları
+    4. Çakışma kontrolü ile kalite filtresi
+    5. Çeşitlilik + kalite dengesini gözeten seçim
+    """
     from core.plan_scorer import score_plan
 
     plans = []
     used_layouts = set()
 
-    for i in range(plan_count * 4):  # 4× üret, en iyileri seç
-        seed = random.randint(1, 100000)
-        entrance_sides = ["south", "south", "west", "east"]
-        entrance = entrance_sides[i % len(entrance_sides)]
+    # ── Akıllı giriş yönü seçimi (güneşe sırtını dönme) ──
+    # Giriş tercihen güneşin karşı tarafında (kuzey giriş = güney salon)
+    sun_opposite = {"south": "north", "north": "south", "east": "west", "west": "east"}
+    primary_entrance = sun_opposite.get(sun_direction, "south")
+    entrance_priority = [primary_entrance, "south", "west", "east", "north"]
+    # Tekrarları kaldır, sırayı koru
+    seen = set()
+    entrance_order = []
+    for e in entrance_priority:
+        if e not in seen:
+            entrance_order.append(e)
+            seen.add(e)
 
-        # Farklı layout tipleri deneyelim
-        layout = LAYOUT_TYPES[i % len(LAYOUT_TYPES)]
-        open_plan = (i % 3 == 0)
-        en_suite = (i % 4 == 0) and apartment_type in ("3+1", "4+1")
+    # ── Bina oranına göre layout uygunluğu ──
+    aspect = buildable_width / max(buildable_height, 0.1)
+    if aspect > 1.8:  # Çok geniş bina
+        layout_priority = ["center_corridor", "l_shape", "open_plan", "t_shape", "short_corridor"]
+    elif aspect < 0.6:  # Çok derin bina
+        layout_priority = ["short_corridor", "l_shape", "center_corridor", "open_plan", "t_shape"]
+    else:  # Dengeli oran
+        layout_priority = ["center_corridor", "t_shape", "l_shape", "short_corridor", "open_plan"]
 
-        plan = generate_professional_plan(
-            buildable_width, buildable_height, origin_x, origin_y,
-            room_program, apartment_type, target_area,
-            entrance_side=entrance, sun_direction=sun_direction,
-            seed=seed, layout_type=layout,
-            open_plan_kitchen=open_plan, en_suite=en_suite,
-        )
+    # ── Daire tipine göre özellik matrisi ──
+    feature_combos = []
+    if apartment_type in ("1+1", "2+1"):
+        feature_combos = [
+            {"open_plan": True, "en_suite": False},
+            {"open_plan": False, "en_suite": False},
+            {"open_plan": True, "en_suite": False},
+        ]
+    elif apartment_type in ("3+1",):
+        feature_combos = [
+            {"open_plan": False, "en_suite": True},
+            {"open_plan": True, "en_suite": False},
+            {"open_plan": False, "en_suite": False},
+            {"open_plan": True, "en_suite": True},
+        ]
+    else:  # 4+1, 5+1
+        feature_combos = [
+            {"open_plan": False, "en_suite": True},
+            {"open_plan": False, "en_suite": True},
+            {"open_plan": True, "en_suite": True},
+            {"open_plan": False, "en_suite": False},
+        ]
 
-        if plan.rooms:
-            sc = score_plan(plan, sun_best_direction=sun_direction)
-            layout_label = getattr(plan, 'layout_type', layout)
-            features = []
-            if getattr(plan, 'open_plan', False):
-                features.append("açık plan")
-            if getattr(plan, 'en_suite', False):
-                features.append("en-suite")
-            feat_str = f" ({', '.join(features)})" if features else ""
+    # ── Sistematik plan üretimi (layout × giriş × özellik) ──
+    gen_count = 0
+    max_attempts = plan_count * 5
 
-            plans.append({
-                "floor_plan": plan,
-                "score": sc,
-                "reasoning": (f"Profesyonel plan — {layout_label}"
-                              f"{feat_str} (giriş: {entrance}, seed: {seed})"),
-                "seed": seed,
-                "layout_type": layout_label,
-            })
+    for layout_idx, layout in enumerate(layout_priority):
+        for ent_idx, entrance in enumerate(entrance_order[:3]):
+            if gen_count >= max_attempts:
+                break
+            feat = feature_combos[gen_count % len(feature_combos)]
+            seed = random.randint(1, 100000)
 
-    # Puana göre sırala, farklı layout tiplerini tercih et
+            plan = generate_professional_plan(
+                buildable_width, buildable_height, origin_x, origin_y,
+                room_program, apartment_type, target_area,
+                entrance_side=entrance, sun_direction=sun_direction,
+                seed=seed, layout_type=layout,
+                open_plan_kitchen=feat["open_plan"], en_suite=feat["en_suite"],
+            )
+            gen_count += 1
+
+            if plan.rooms:
+                # ── Kalite filtresi: boş alan ve çakışma kontrolü ──
+                total_room_area = sum(r.area for r in plan.rooms)
+                coverage = total_room_area / max(target_area, 1)
+                if coverage < 0.50:  # Çok fazla boş alan → atla
+                    continue
+
+                sc = score_plan(plan, sun_best_direction=sun_direction)
+                layout_label = getattr(plan, 'layout_type', layout)
+                features = []
+                if getattr(plan, 'open_plan', False):
+                    features.append("açık plan")
+                if getattr(plan, 'en_suite', False):
+                    features.append("en-suite")
+                feat_str = f" ({', '.join(features)})" if features else ""
+
+                # Giriş yön açıklaması
+                yon_tr = {"south": "güney", "north": "kuzey", "east": "doğu", "west": "batı"}
+                ent_tr = yon_tr.get(entrance, entrance)
+
+                plans.append({
+                    "floor_plan": plan,
+                    "score": sc,
+                    "reasoning": (
+                        f"Profesyonel plan — {layout_label}{feat_str} | "
+                        f"Giriş: {ent_tr} | Alan kaplama: %{coverage*100:.0f} | "
+                        f"Puan: {sc.total:.0f}/100"
+                    ),
+                    "seed": seed,
+                    "layout_type": layout_label,
+                })
+
+    # ── Puana göre sırala ──
     plans.sort(key=lambda p: p["score"].total, reverse=True)
 
-    # Çeşitlilik filtresi: farklı layout tiplerini seç
+    # ── Çeşitlilik + kalite dengeli seçim ──
     diverse_plans = []
+    layout_count = {}
     for p in plans:
         lt = p.get("layout_type", "")
-        if lt not in used_layouts or len(diverse_plans) < plan_count:
+        lt_used = layout_count.get(lt, 0)
+        # Her layout tipinden max 2 plan, ama kalite yeterliyse 1
+        if lt_used < 2 or len(diverse_plans) < plan_count:
             diverse_plans.append(p)
-            used_layouts.add(lt)
+            layout_count[lt] = lt_used + 1
         if len(diverse_plans) >= plan_count:
             break
 

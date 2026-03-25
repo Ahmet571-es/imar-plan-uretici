@@ -158,6 +158,37 @@ def render_floor_plan(
     ax.text(scale_x + 2.5, scale_y - 0.4, f"5 m ({scale})",
             ha="center", fontsize=8, color="#333")
 
+    # ── Profesyonel lejant ──
+    legend_patches = []
+    seen_types = set()
+    for room in plan.rooms:
+        rt = room.room_type
+        if rt not in seen_types and rt in ROOM_COLORS:
+            color = ROOM_COLORS[rt]
+            tip_tr = {
+                "salon": "Salon", "yatak_odasi": "Yatak Odası", "mutfak": "Mutfak",
+                "banyo": "Banyo", "wc": "WC", "antre": "Antre", "koridor": "Koridor",
+                "balkon": "Balkon", "merdiven": "Merdiven", "salon_mutfak": "Salon+Mutfak",
+            }
+            legend_patches.append(mpatches.Patch(facecolor=color, edgecolor="#999",
+                                                  label=tip_tr.get(rt, rt.title())))
+            seen_types.add(rt)
+    if legend_patches:
+        ax.legend(handles=legend_patches, loc="upper left", fontsize=7,
+                  framealpha=0.9, ncol=min(len(legend_patches), 4),
+                  title="Oda Tipleri", title_fontsize=8)
+
+    # ── Alan özeti bilgi kutusu ──
+    toplam_alan = sum(r.area for r in plan.rooms)
+    oda_sayisi = len(plan.rooms)
+    info_text = f"Toplam: {toplam_alan:.1f} m² | {oda_sayisi} oda"
+    if hasattr(plan, 'apartment_type') and plan.apartment_type:
+        info_text = f"{plan.apartment_type} | {info_text}"
+    ax.text(0.98, 0.02, info_text, transform=ax.transAxes,
+            ha="right", va="bottom", fontsize=8, color="#555",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                      edgecolor="#ccc", alpha=0.9), zorder=20)
+
     ax.set_aspect("equal")
     ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
     ax.grid(True, alpha=0.15, linestyle="--")
