@@ -1187,8 +1187,12 @@ sayfa_fonksiyonu = SAYFA_MAP.get(st.session_state.aktif_sayfa, sayfa_parsel)
 sayfa_fonksiyonu()
 
 # ── Sonraki Adım butonu ──
+# Bu sayfalar kendi "Sonraki Adım" butonunu zaten içeriyor.
+# Global butonla çakışma olmasın diye bunları atlıyoruz.
+_KENDI_NAVIGASYONU_OLAN_SAYFALAR = {"1_parsel", "3_imar", "4_hesaplama", "5_daire"}
 try:
-    render_next_step_button(st.session_state.aktif_sayfa)
+    if st.session_state.aktif_sayfa not in _KENDI_NAVIGASYONU_OLAN_SAYFALAR:
+        render_next_step_button(st.session_state.aktif_sayfa)
 except Exception:
     pass
 
