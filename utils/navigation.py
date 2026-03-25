@@ -3,6 +3,8 @@ Sayfa Navigasyon Yardımcıları — Progress indicator ve "Sonraki Adım" buton
 """
 
 import streamlit as st
+import json as _json
+import os as _os
 
 # Sayfa sırası ve bağımlılıkları
 SAYFA_SIRASI = [
@@ -88,6 +90,7 @@ def render_next_step_button(current_page: str):
                          type="primary", use_container_width=True,
                          key=f"next_{current_page}"):
                 st.session_state.aktif_sayfa = next_key
+                _save_aktif_sayfa()
                 st.rerun()
 
     # Önceki adım butonu
@@ -100,7 +103,23 @@ def render_next_step_button(current_page: str):
                          use_container_width=True,
                          key=f"prev_{current_page}"):
                 st.session_state.aktif_sayfa = prev_key
+                _save_aktif_sayfa()
                 st.rerun()
+
+
+def _save_aktif_sayfa():
+    """aktif_sayfa değerini autosave dosyasına yaz."""
+    path = "/tmp/imar_plan_autosave.json"
+    try:
+        data = {}
+        if _os.path.exists(path):
+            with open(path) as f:
+                data = _json.load(f)
+        data["aktif_sayfa"] = st.session_state.get("aktif_sayfa", "1_parsel")
+        with open(path, "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def get_sidebar_style(page_key: str) -> str:

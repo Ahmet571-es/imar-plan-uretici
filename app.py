@@ -72,8 +72,11 @@ def _auto_save():
 
 
 def _auto_load():
-    """Sayfa yenilendiğinde /tmp'den otomatik yükle."""
+    """Sayfa yenilendiğinde /tmp'den otomatik yükle (sadece ilk açılışta)."""
+    if st.session_state.get("_auto_loaded"):
+        return
     if not _os.path.exists(_AUTOSAVE_PATH):
+        st.session_state._auto_loaded = True
         return
     try:
         with open(_AUTOSAVE_PATH) as f:
@@ -92,7 +95,7 @@ def _auto_load():
             from core.zoning import hesapla
             st.session_state.hesaplama = hesapla(st.session_state.parsel.polygon, st.session_state.imar)
 
-        if "aktif_sayfa" in data:
+        if "aktif_sayfa" in data and "aktif_sayfa" not in st.session_state:
             st.session_state.aktif_sayfa = data["aktif_sayfa"]
 
         if "claude_api_key" in data and not st.session_state.get("claude_api_key"):
@@ -101,6 +104,8 @@ def _auto_load():
         if "grok_api_key" in data and not st.session_state.get("grok_api_key"):
             st.session_state.grok_api_key = data["grok_api_key"]
             _os.environ["XAI_API_KEY"] = data["grok_api_key"]
+
+        st.session_state._auto_loaded = True
 
     except Exception:
         pass
@@ -174,6 +179,7 @@ with st.sidebar:
         if st.button(label, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
             st.session_state.aktif_sayfa = key
+            _auto_save()
             st.rerun()
 
     st.markdown("### 💰 ANALİZ & FİZİBİLİTE")
@@ -188,6 +194,7 @@ with st.sidebar:
         if st.button(label, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
             st.session_state.aktif_sayfa = key
+            _auto_save()
             st.rerun()
 
     st.markdown("### 📜 HUKUK & BELGE")
@@ -201,6 +208,7 @@ with st.sidebar:
         if st.button(label, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
             st.session_state.aktif_sayfa = key
+            _auto_save()
             st.rerun()
 
     st.markdown("### ⚙️ OTOMASYON")
@@ -214,6 +222,7 @@ with st.sidebar:
         if st.button(label, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
             st.session_state.aktif_sayfa = key
+            _auto_save()
             st.rerun()
 
     st.markdown("### 🤖 AJANLAR")
@@ -226,6 +235,7 @@ with st.sidebar:
         if st.button(label, key=f"nav_{key}", use_container_width=True,
                      type="primary" if st.session_state.aktif_sayfa == key else "secondary"):
             st.session_state.aktif_sayfa = key
+            _auto_save()
             st.rerun()
 
     st.markdown("---")
@@ -462,6 +472,7 @@ def sayfa_parsel():
         st.markdown("---")
         if st.button("➡️ Sonraki Adım: İmar Bilgileri", type="primary", key="btn_next_1"):
             st.session_state.aktif_sayfa = "3_imar"
+            _auto_save()
             st.rerun()
 
 
@@ -568,6 +579,7 @@ def sayfa_imar():
 
         if st.button("➡️ Sonraki Adım: Hesaplama Sonuçları", type="primary", key="btn_next_3"):
             st.session_state.aktif_sayfa = "4_hesaplama"
+            _auto_save()
             st.rerun()
 
 
@@ -655,6 +667,7 @@ def sayfa_hesaplama():
     st.markdown("---")
     if st.button("➡️ Sonraki Adım: Daire Bölümleme", type="primary", key="btn_next_4"):
         st.session_state.aktif_sayfa = "5_daire"
+        _auto_save()
         st.rerun()
 
 
@@ -870,6 +883,7 @@ def sayfa_daire():
         st.markdown("---")
         if st.button("➡️ Sonraki Adım: Kat Planı Üretimi", type="primary", key="btn_next_5"):
             st.session_state.aktif_sayfa = "6_plan"
+            _auto_save()
             st.rerun()
 
 
