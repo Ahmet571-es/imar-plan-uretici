@@ -310,8 +310,9 @@ def sayfa_3d():
     else:
         daire_tipi, daire_alan, daire_per_kat = "3+1", 120.0, 2
 
-    # Stil seçimi
-    render_col1, render_col2 = st.columns(2)
+    # Stil ve kalite seçimi
+    from ai.grok_imagine import IMAGE_MODELS
+    render_col1, render_col2, render_col3 = st.columns(3)
     with render_col1:
         ai_stil = st.selectbox(
             "Mimari Stil",
@@ -321,6 +322,14 @@ def sayfa_3d():
         )
     with render_col2:
         sehir = st.text_input("Şehir", "İstanbul", key="3d_sehir")
+    with render_col3:
+        ai_quality = st.selectbox(
+            "Görsel Kalitesi",
+            list(IMAGE_MODELS.keys()),
+            format_func=lambda x: IMAGE_MODELS[x]["isim"],
+            index=0,
+            key="3d_ai_quality",
+        )
 
     ek_prompt = st.text_input(
         "Ek talimat (opsiyonel)",
@@ -385,6 +394,7 @@ def sayfa_3d():
                             aspect_ratio=aspect,
                             render_type="3d_single_angle",
                             style=STYLE_VARIANTS[ai_stil]["isim"],
+                            quality=ai_quality,
                         )
 
                     _handle_3d_render_result(result, STYLE_VARIANTS[ai_stil]["isim"])
@@ -421,6 +431,7 @@ def sayfa_3d():
                         sehir=sehir,
                         ek_prompt=ek_prompt,
                         progress_callback=update_progress,
+                        quality=ai_quality,
                     )
 
                     progress.progress(1.0, "Tamamlandı!")
@@ -462,6 +473,7 @@ def sayfa_3d():
                                 taban_boy=taban_boy,
                                 mimari_stil_key=ai_stil,
                                 ek_prompt=ek_prompt,
+                                quality=ai_quality,
                             )
                         _handle_3d_render_result(result, STYLE_VARIANTS.get(ai_stil, {}).get("isim", ""))
                     finally:
@@ -587,6 +599,17 @@ def sayfa_render():
     grok_key = st.session_state.get("grok_api_key", "")
     if not grok_key:
         st.warning("Sidebar'dan Grok/xAI API Key girin. Render'lar API key olmadan prompt önizleme modunda çalışır.")
+
+    # Görsel kalitesi seçimi (tüm render modları için ortak)
+    from ai.grok_imagine import IMAGE_MODELS
+    render_quality = st.selectbox(
+        "Görsel Kalitesi",
+        list(IMAGE_MODELS.keys()),
+        format_func=lambda x: IMAGE_MODELS[x]["isim"],
+        index=0,
+        key="render_quality",
+        help="Pro: Daha yüksek kalite, daha detaylı malzeme dokuları ($0.07/görsel). Standard: Hızlı ve ekonomik ($0.02/görsel).",
+    )
 
     # ── Veri hazırlığı ──
     imar = st.session_state.get("imar")
@@ -719,6 +742,7 @@ def sayfa_render():
                             api_key=grok_key,
                             render_type="exterior",
                             style=STYLE_VARIANTS[mimari_stil]["isim"],
+                            quality=render_quality,
                         )
 
                     if result.success and result.image_data:
@@ -742,6 +766,7 @@ def sayfa_render():
                             prompt_builder_func=build_exterior_prompt,
                             prompt_kwargs=prompt_kwargs,
                             api_key=grok_key,
+                            quality=render_quality,
                         )
 
                     cols = st.columns(2)
@@ -835,6 +860,7 @@ def sayfa_render():
                             api_key=grok_key,
                             render_type="interior",
                             style=STYLE_VARIANTS[ic_stil]["isim"],
+                            quality=render_quality,
                         )
 
                     if result.success and (result.image_data or result.image_url):
@@ -867,6 +893,7 @@ def sayfa_render():
                             api_key=grok_key,
                             render_type="interior",
                             style=f"{STYLE_VARIANTS[ic_stil]['isim']} - {room.name}",
+                            quality=render_quality,
                         )
                         if result.success and (result.image_data or result.image_url):
                             img = result.image_data if result.image_data else result.image_url
@@ -934,6 +961,7 @@ def sayfa_render():
                         aspect_ratio="1:1",
                         render_type="site_plan",
                         style="Site Plan",
+                        quality=render_quality,
                     )
 
                 if result.success and (result.image_data or result.image_url):

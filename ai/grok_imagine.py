@@ -23,11 +23,33 @@ logger = logging.getLogger(__name__)
 
 # ── Sabitler ──
 XAI_BASE_URL = "https://api.x.ai/v1"
-XAI_IMAGE_MODEL = "grok-imagine-image"
+XAI_IMAGE_MODEL_STANDARD = "grok-imagine-image"
+XAI_IMAGE_MODEL_PRO = "grok-imagine-image-pro"
 DEFAULT_ASPECT_RATIO = "16:9"
 DEFAULT_RESOLUTION = "2k"
 MAX_RETRIES = 3
 RETRY_DELAY_BASE = 2  # saniye, üstel geri çekilme
+
+# Model bilgileri
+IMAGE_MODELS = {
+    "standard": {
+        "model_id": XAI_IMAGE_MODEL_STANDARD,
+        "isim": "Standard ($0.02/görsel)",
+        "fiyat": 0.02,
+        "rate_limit": "300 req/dk",
+    },
+    "pro": {
+        "model_id": XAI_IMAGE_MODEL_PRO,
+        "isim": "Pro ($0.07/görsel — yüksek kalite)",
+        "fiyat": 0.07,
+        "rate_limit": "30 req/dk",
+    },
+}
+
+
+def _get_model_id(quality: str = "standard") -> str:
+    """Kalite seviyesine göre model ID döndürür."""
+    return IMAGE_MODELS.get(quality, IMAGE_MODELS["standard"])["model_id"]
 API_TIMEOUT = 90  # saniye — render uzun sürebilir
 
 
@@ -104,6 +126,7 @@ def generate_image(
     resolution: str = DEFAULT_RESOLUTION,
     render_type: str = "exterior",
     style: str = "",
+    quality: str = "standard",
 ) -> ImageResult:
     """Grok Imagine ile text-to-image görsel üretir.
 
@@ -136,8 +159,9 @@ def generate_image(
             if resolution and resolution != "default":
                 extra["resolution"] = resolution
 
+            model_id = _get_model_id(quality)
             response = client.images.generate(
-                model=XAI_IMAGE_MODEL,
+                model=model_id,
                 prompt=prompt,
                 extra_body=extra,
             )
@@ -173,6 +197,7 @@ def edit_image(
     edit_prompt: str,
     api_key: str,
     image_base64: str = "",
+    quality: str = "standard",
 ) -> ImageResult:
     """Grok Imagine ile mevcut görseli düzenler.
 
@@ -243,8 +268,9 @@ def edit_image(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
     }
+    model_id = _get_model_id(quality)
     payload = {
-        "model": XAI_IMAGE_MODEL,
+        "model": model_id,
         "prompt": edit_prompt,
         "image": image_source,
     }
@@ -320,6 +346,7 @@ def render_3d_to_photorealistic(
     mimari_stil_key: str = "modern_minimalist",
     aydinlatma: str = "Golden hour warm sunset",
     ek_prompt: str = "",
+    quality: str = "standard",
 ) -> ImageResult:
     """3D wireframe görüntüsünü fotorealistik render'a dönüştürür.
 
@@ -360,6 +387,7 @@ def render_3d_to_photorealistic(
         api_key=api_key,
         render_type="3d_to_photorealistic",
         style=mimari_stil_key,
+        quality=quality,
     )
 
     if not base_result.success:
@@ -386,6 +414,7 @@ def render_3d_to_photorealistic(
                 image_url=base_result.image_url,
                 edit_prompt=edit_prompt,
                 api_key=api_key,
+                quality=quality,
             )
 
             if edit_result.success:
@@ -413,6 +442,7 @@ def generate_6_angle_pack(
     daire_tipi: str = "3+1",
     daire_alan: float = 120.0,
     balkon_tipi: str = "cam_korkuluk",
+    quality: str = "standard",
     mimari_stil_key: str = "modern_minimalist",
     sehir: str = "İstanbul",
     ek_prompt: str = "",
@@ -477,6 +507,7 @@ def generate_6_angle_pack(
             api_key=api_key,
             aspect_ratio=angle_config.get("aspect_ratio", "16:9"),
             render_type="6_angle_pack",
+            quality=quality,
             style=angle_config["isim"],
         )
         result.metadata["angle_key"] = angle_key
@@ -491,6 +522,7 @@ def generate_style_comparison(
     prompt_kwargs: dict,
     api_key: str,
     styles: list[str] | None = None,
+    quality: str = "standard",
 ) -> list[ImageResult]:
     """4 farklı mimari stilde görsel üretir.
 
@@ -518,6 +550,7 @@ def generate_style_comparison(
             api_key=api_key,
             render_type="style_comparison",
             style=STYLE_VARIANTS[style_key]["isim"],
+            quality=quality,
         )
         results.append(result)
 
