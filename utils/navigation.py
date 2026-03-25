@@ -3,8 +3,6 @@ Sayfa Navigasyon Yardımcıları — Progress indicator ve "Sonraki Adım" buton
 """
 
 import streamlit as st
-import json as _json
-import os as _os
 
 # Sayfa sırası ve bağımlılıkları
 SAYFA_SIRASI = [
@@ -34,6 +32,11 @@ SAYFA_SIRASI = [
     ("24_firsat", "Firsat Merkezi", None),
     ("25_piyasa", "Piyasa Istihbarat", None),
 ]
+
+
+def _navigate(page: str):
+    """Sayfa değiştirme callback fonksiyonu (on_click ile kullanılır)."""
+    st.session_state.aktif_sayfa = page
 
 
 def render_progress_bar():
@@ -86,12 +89,10 @@ def render_next_step_button(current_page: str):
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button(f"Sonraki Adim: {next_label} →",
-                         type="primary", use_container_width=True,
-                         key=f"next_{current_page}"):
-                st.session_state.aktif_sayfa = next_key
-                _save_aktif_sayfa()
-                st.rerun()
+            st.button(f"Sonraki Adim: {next_label} →",
+                      type="primary", use_container_width=True,
+                      key=f"next_{current_page}",
+                      on_click=_navigate, args=(next_key,))
 
     # Önceki adım butonu
     if idx > 0:
@@ -99,27 +100,10 @@ def render_next_step_button(current_page: str):
         prev_label = SAYFA_SIRASI[idx - 1][1]
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button(f"← Onceki: {prev_label}",
-                         use_container_width=True,
-                         key=f"prev_{current_page}"):
-                st.session_state.aktif_sayfa = prev_key
-                _save_aktif_sayfa()
-                st.rerun()
-
-
-def _save_aktif_sayfa():
-    """aktif_sayfa değerini autosave dosyasına yaz."""
-    path = "/tmp/imar_plan_autosave.json"
-    try:
-        data = {}
-        if _os.path.exists(path):
-            with open(path) as f:
-                data = _json.load(f)
-        data["aktif_sayfa"] = st.session_state.get("aktif_sayfa", "1_parsel")
-        with open(path, "w") as f:
-            _json.dump(data, f, ensure_ascii=False)
-    except Exception:
-        pass
+            st.button(f"← Onceki: {prev_label}",
+                      use_container_width=True,
+                      key=f"prev_{current_page}",
+                      on_click=_navigate, args=(prev_key,))
 
 
 def get_sidebar_style(page_key: str) -> str:
