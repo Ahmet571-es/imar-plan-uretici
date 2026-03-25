@@ -174,9 +174,14 @@ def sayfa_ai_tefris():
         st.session_state.get("generated_plans", [{}])[0] if st.session_state.get("generated_plans") else None
     )
 
+    # Plan yoksa demo plan oluştur
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce Kat Planı Üretimi sayfasından bir plan seçin.")
-        return
+        st.info("ℹ️ Henüz plan seçilmedi. Demo plan ile mobilya yerleşimi gösteriliyor.")
+        from core.floor_plan_generator import generate_professional_plan
+        from core.plan_scorer import score_plan
+        demo_plan = generate_professional_plan(16.0, 12.0, apartment_type="3+1", target_area=120, seed=42)
+        demo_score = score_plan(demo_plan, sun_best_direction="south")
+        plan_data = {"plan": demo_plan, "score": demo_score}
 
     plan = plan_data["plan"]
     st.info(f"📐 Seçili plan: {len(plan.rooms)} oda, {plan.total_area:.1f} m², Puan: {plan_data.get('score', type('',(),{'total':0})).total:.0f}/100")
@@ -216,9 +221,14 @@ def sayfa_3d():
     imar = st.session_state.get("imar")
     parsel = st.session_state.get("parsel")
 
+    # Plan yoksa demo plan oluştur
     if plan_data is None or "plan" not in plan_data:
-        st.warning("⚠️ Önce bir kat planı üretin ve seçin.")
-        return
+        st.info("ℹ️ Henüz plan üretilmedi. Demo plan ile 3D görselleştirme gösteriliyor.")
+        from core.floor_plan_generator import generate_professional_plan
+        from core.plan_scorer import score_plan
+        demo_plan = generate_professional_plan(16.0, 12.0, apartment_type="3+1", target_area=120, seed=42)
+        demo_score = score_plan(demo_plan, sun_best_direction="south")
+        plan_data = {"plan": demo_plan, "score": demo_score}
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:

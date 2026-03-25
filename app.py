@@ -60,10 +60,7 @@ def _auto_save():
                 "on_bahce": im.on_bahce, "yan_bahce": im.yan_bahce, "arka_bahce": im.arka_bahce,
                 "siginak_gerekli": im.siginak_gerekli, "otopark_gerekli": im.otopark_gerekli,
             }
-        if st.session_state.get("claude_api_key"):
-            data["claude_api_key"] = st.session_state.claude_api_key
-        if st.session_state.get("grok_api_key"):
-            data["grok_api_key"] = st.session_state.grok_api_key
+        # GÜVENLİK: API key'ler /tmp'ye kaydedilmez — sadece session'da tutulur.
 
         with open(_AUTOSAVE_PATH, "w") as f:
             _json.dump(data, f, ensure_ascii=False)
@@ -95,12 +92,7 @@ def _auto_load():
         if "aktif_sayfa" in data:
             st.session_state.aktif_sayfa = data["aktif_sayfa"]
 
-        if "claude_api_key" in data and not st.session_state.get("claude_api_key"):
-            st.session_state.claude_api_key = data["claude_api_key"]
-            _os.environ["ANTHROPIC_API_KEY"] = data["claude_api_key"]
-        if "grok_api_key" in data and not st.session_state.get("grok_api_key"):
-            st.session_state.grok_api_key = data["grok_api_key"]
-            _os.environ["XAI_API_KEY"] = data["grok_api_key"]
+        # GÜVENLİK: API key'ler /tmp'den yüklenmez — sadece st.secrets veya kullanıcı girişi.
 
     except Exception:
         pass
@@ -938,14 +930,166 @@ def placeholder_sayfa(baslik, faz, aciklama=""):
         st.markdown(aciklama)
 
 def sayfa_whatsapp():
-    placeholder_sayfa("📱 WhatsApp Bot", "FAZ 8", "Twilio/Green API ile sahadan hızlı fizibilite sorgusu.")
+    """Sayfa 19 — WhatsApp Bot yapılandırma ve mesaj simülasyonu."""
+    st.header("📱 WhatsApp Bot")
+
+    st.markdown("""
+    WhatsApp üzerinden sahadan hızlı fizibilite sorgusu yapılabilir.
+    Entegrasyon için **Green API** veya **Twilio** hesabı gerekir.
+    """)
+
+    # API yapılandırma
+    with st.expander("API Yapılandırma", expanded=False):
+        provider = st.selectbox("Servis Sağlayıcı", ["Green API", "Twilio"], key="wa_provider")
+        if provider == "Green API":
+            st.text_input("Instance ID", type="password", key="wa_instance")
+            st.text_input("API Token", type="password", key="wa_token")
+        else:
+            st.text_input("Account SID", type="password", key="wa_sid")
+            st.text_input("Auth Token", type="password", key="wa_auth")
+        st.caption("API bilgileri sadece bu oturumda tutulur, kaydedilmez.")
+
+    # Mesaj simülasyonu
+    st.subheader("Mesaj Simülasyonu")
+    st.info("API yapılandırılmadan demo modda mesaj simülasyonu yapabilirsiniz.")
+
+    ornek_mesajlar = [
+        "Ankara Çankaya'da 600m² parsel, 4 kat TAKS 0.35 KAKS 1.40 fizibilite hesapla",
+        "İstanbul Kadıköy 450m² arsa ne kadar kâr getirir?",
+        "3+1 daire maliyeti nedir Ankara Etimesgut?",
+    ]
+    secili = st.selectbox("Örnek Mesaj", ornek_mesajlar, key="wa_ornek")
+
+    mesaj = st.text_input("Mesaj Girin", value=secili, key="wa_mesaj")
+
+    if st.button("📤 Simüle Et", type="primary", key="wa_gonder"):
+        with st.spinner("Analiz ediliyor..."):
+            # Basit anahtar kelime analizi
+            yanit = _whatsapp_demo_yanit(mesaj)
+            st.session_state.wa_yanit = yanit
+
+    if "wa_yanit" in st.session_state:
+        st.markdown("---")
+        st.markdown("**🤖 Bot Yanıtı:**")
+        st.success(st.session_state.wa_yanit)
+
+    # Mesaj geçmişi
+    st.markdown("---")
+    st.subheader("Mesaj Geçmişi")
+    if "wa_gecmis" not in st.session_state:
+        st.session_state.wa_gecmis = []
+    if "wa_yanit" in st.session_state and mesaj:
+        kayit = {"mesaj": mesaj, "yanit": st.session_state.wa_yanit}
+        if not st.session_state.wa_gecmis or st.session_state.wa_gecmis[-1] != kayit:
+            st.session_state.wa_gecmis.append(kayit)
+    for g in reversed(st.session_state.wa_gecmis[-10:]):
+        st.markdown(f"📩 **{g['mesaj']}**")
+        st.markdown(f"🤖 {g['yanit']}")
+        st.markdown("---")
+
+
+def _whatsapp_demo_yanit(mesaj: str) -> str:
+    """WhatsApp demo: basit anahtar kelime bazlı yanıt üretici."""
+    mesaj_lower = mesaj.lower()
+    if "fizibilite" in mesaj_lower or "kâr" in mesaj_lower or "kar" in mesaj_lower:
+        return (
+            "📊 Hızlı Fizibilite Tahmini:\n"
+            "• Tahmini inşaat maliyeti: ~₺25-30M\n"
+            "• Tahmini satış geliri: ~₺35-40M\n"
+            "• Kâr marjı: %15-25\n\n"
+            "Detaylı analiz için uygulamamıza girin: [link]"
+        )
+    elif "maliyet" in mesaj_lower or "fiyat" in mesaj_lower:
+        return (
+            "💰 Maliyet Tahmini:\n"
+            "• Orta kalite konut: ₺28.000-35.000/m²\n"
+            "• Lüks konut: ₺42.000-55.000/m²\n"
+            "• Arsa maliyeti hariç\n\n"
+            "Bölgeye özel fiyat için il/ilçe belirtin."
+        )
+    elif "parsel" in mesaj_lower or "arsa" in mesaj_lower:
+        return (
+            "📍 Parsel Analizi:\n"
+            "TKGM üzerinden parsel sorgulaması yapabiliriz.\n"
+            "Lütfen il, ilçe, ada ve parsel numarasını gönderin.\n"
+            "Örnek: Ankara Çankaya 1301 ada 7 parsel"
+        )
+    else:
+        return (
+            "Merhaba! İmar Plan Üretici Bot'a hoş geldiniz.\n\n"
+            "Şu komutları kullanabilirsiniz:\n"
+            "• 'fizibilite' — Hızlı fizibilite tahmini\n"
+            "• 'maliyet' — İnşaat maliyet tahmini\n"
+            "• 'parsel' — TKGM parsel sorgusu\n\n"
+            "Örnek: 'Ankara 600m² parsel fizibilite hesapla'"
+        )
+
 
 def sayfa_veri():
-    placeholder_sayfa("🔄 Veri Güncelleme", "FAZ 9", "Sahibinden, TCMB, TÜİK scraper'ları + otomatik güncelleme.")
+    """Sayfa 20 — Veri Güncelleme ve dış kaynak entegrasyonu."""
+    st.header("🔄 Veri Güncelleme")
+
+    st.markdown("Dış kaynaklardan güncel veri çekme ve yerel veritabanını güncelleme.")
+
+    # TCMB Döviz
+    st.subheader("💱 TCMB Döviz Kurları")
+    if st.button("Döviz Kurlarını Güncelle", key="veri_doviz"):
+        with st.spinner("TCMB'den veri çekiliyor..."):
+            try:
+                import requests
+                resp = requests.get("https://www.tcmb.gov.tr/kurlar/today.xml", timeout=10)
+                if resp.status_code == 200:
+                    # Basit XML parse
+                    content = resp.text
+                    import re
+                    usd_match = re.search(r'<Currency.*?Kod="USD".*?<BanknoteSelling>([\d.,]+)', content, re.DOTALL)
+                    eur_match = re.search(r'<Currency.*?Kod="EUR".*?<BanknoteSelling>([\d.,]+)', content, re.DOTALL)
+                    usd = float(usd_match.group(1).replace(",", ".")) if usd_match else 0
+                    eur = float(eur_match.group(1).replace(",", ".")) if eur_match else 0
+                    st.session_state.doviz = {"USD": usd, "EUR": eur}
+                    st.success("Döviz kurları güncellendi!")
+                else:
+                    st.warning("TCMB'ye erişilemedi. Demo veriler gösteriliyor.")
+                    st.session_state.doviz = {"USD": 36.50, "EUR": 39.80}
+            except Exception:
+                st.session_state.doviz = {"USD": 36.50, "EUR": 39.80}
+                st.info("TCMB erişimi başarısız. Demo veriler kullanılıyor.")
+
+    if "doviz" in st.session_state:
+        col1, col2 = st.columns(2)
+        col1.metric("USD/TRY", f"₺{st.session_state.doviz['USD']:.2f}")
+        col2.metric("EUR/TRY", f"₺{st.session_state.doviz['EUR']:.2f}")
+
+    # İnşaat Maliyet Endeksi
+    st.markdown("---")
+    st.subheader("🏗️ İnşaat Maliyet Endeksi")
+    import pandas as pd
+    endeks_data = {
+        "Dönem": ["2025 Q1", "2025 Q2", "2025 Q3", "2025 Q4", "2026 Q1"],
+        "Endeks": [842.5, 871.3, 895.7, 923.1, 948.6],
+        "Değişim (%)": ["+3.8", "+3.4", "+2.8", "+3.1", "+2.8"],
+    }
+    st.dataframe(pd.DataFrame(endeks_data), hide_index=True, use_container_width=True)
+    st.caption("Kaynak: TÜİK İnşaat Maliyet Endeksi (demo veriler)")
+
+    # Bölgesel Fiyatlar
+    st.markdown("---")
+    st.subheader("📊 Bölgesel m² Satış Fiyatları")
+    from config.cost_defaults import get_iller
+    iller = get_iller()
+    secili_il = st.selectbox("İl Seçin", iller, key="veri_il")
+
+    fiyat_data = {
+        "Daire Tipi": ["1+1", "2+1", "3+1", "4+1"],
+        "Ort. m² Fiyat (₺)": ["35.000", "38.000", "42.000", "48.000"],
+        "Değişim (Yıllık)": ["+18%", "+15%", "+12%", "+10%"],
+    }
+    st.dataframe(pd.DataFrame(fiyat_data), hide_index=True, use_container_width=True)
+    st.caption(f"Kaynak: {secili_il} bölgesi tahmini fiyatlar (demo veriler)")
 
 def sayfa_crm():
     """CRM Sayfası — Müşteri ve proje takibi."""
-    st.header("CRM — Musteri ve Proje Takibi")
+    st.header("CRM — Müşteri ve Proje Takibi")
 
     from database.db import get_engine
     try:
@@ -955,22 +1099,22 @@ def sayfa_crm():
         engine = None
 
     # Müşteri ekleme formu
-    with st.expander("Yeni Musteri Ekle", expanded=False):
+    with st.expander("Yeni Müşteri Ekle", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             mus_ad = st.text_input("Ad Soyad", key="crm_ad")
             mus_tel = st.text_input("Telefon", key="crm_tel")
             mus_email = st.text_input("E-posta", key="crm_email")
         with col2:
-            mus_tip = st.selectbox("Musteri Tipi",
-                                    ["Bireysel", "Kurumsal", "Muteahhit"],
+            mus_tip = st.selectbox("Müşteri Tipi",
+                                    ["Bireysel", "Kurumsal", "Müteahhit"],
                                     key="crm_tip")
             mus_durum = st.selectbox("Durum",
-                                      ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"],
+                                      ["Aday", "Görüşme", "Teklif", "Sözleşme", "Tamamlandı"],
                                       key="crm_durum")
             mus_not = st.text_area("Notlar", key="crm_not", height=68)
 
-        if st.button("Musteri Kaydet", type="primary", key="crm_kaydet"):
+        if st.button("Müşteri Kaydet", type="primary", key="crm_kaydet"):
             if not mus_ad:
                 st.warning("Ad Soyad zorunludur.")
             else:
@@ -980,25 +1124,25 @@ def sayfa_crm():
                     "ad": mus_ad, "tel": mus_tel, "email": mus_email,
                     "tip": mus_tip, "durum": mus_durum, "not": mus_not,
                 })
-                st.success(f"Musteri eklendi: {mus_ad}")
+                st.success(f"Müşteri eklendi: {mus_ad}")
                 st.rerun()
 
     # Proje ekleme
     with st.expander("Yeni Proje Ekle", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
-            prj_ad = st.text_input("Proje Adi", key="crm_prj_ad")
-            prj_il = st.text_input("Il/Ilce", key="crm_prj_il")
+            prj_ad = st.text_input("Proje Adı", key="crm_prj_ad")
+            prj_il = st.text_input("İl/İlçe", key="crm_prj_il")
         with col2:
             prj_durum = st.selectbox("Proje Durumu",
-                                      ["Fizibilite", "Tasarim", "Ruhsat", "Insaat", "Teslim"],
+                                      ["Fizibilite", "Tasarım", "Ruhsat", "İnşaat", "Teslim"],
                                       key="crm_prj_durum")
-            prj_butce = st.number_input("Butce (TL)", 0, 100_000_000, 5_000_000,
+            prj_butce = st.number_input("Bütçe (TL)", 0, 100_000_000, 5_000_000,
                                          step=100_000, key="crm_prj_butce")
 
         if st.button("Proje Kaydet", type="primary", key="crm_prj_kaydet"):
             if not prj_ad:
-                st.warning("Proje adi zorunludur.")
+                st.warning("Proje adı zorunludur.")
             else:
                 if "crm_projeler" not in st.session_state:
                     st.session_state.crm_projeler = []
@@ -1010,7 +1154,7 @@ def sayfa_crm():
                 st.rerun()
 
     # Müşteri listesi
-    st.subheader("Musteri Listesi")
+    st.subheader("Müşteri Listesi")
     musteriler = st.session_state.get("crm_musteriler", [])
     if musteriler:
         import pandas as pd
@@ -1018,8 +1162,8 @@ def sayfa_crm():
         st.dataframe(df, use_container_width=True)
 
         # Kanban görünüm
-        st.subheader("Kanban Gorunum")
-        durumlar = ["Aday", "Gorusme", "Teklif", "Sozlesme", "Tamamlandi"]
+        st.subheader("Kanban Görünüm")
+        durumlar = ["Aday", "Görüşme", "Teklif", "Sözleşme", "Tamamlandı"]
         cols = st.columns(len(durumlar))
         for i, durum in enumerate(durumlar):
             with cols[i]:
@@ -1033,7 +1177,7 @@ def sayfa_crm():
                         unsafe_allow_html=True,
                     )
     else:
-        st.info("Henuz musteri eklenmedi. Yukaridaki formdan ekleyebilirsiniz.")
+        st.info("Henüz müşteri eklenmedi. Yukarıdaki formdan ekleyebilirsiniz.")
 
     # Proje listesi
     st.subheader("Proje Listesi")
@@ -1043,63 +1187,63 @@ def sayfa_crm():
         df_p = pd.DataFrame(projeler)
         st.dataframe(df_p, use_container_width=True)
     else:
-        st.info("Henuz proje eklenmedi.")
+        st.info("Henüz proje eklenmedi.")
 
 
 def sayfa_workflow():
-    """Is Akisi Motoru — Gorev zamanlama ve workflow editor."""
-    st.header("Is Akisi Motoru")
+    """İş Akışı Motoru — Görev zamanlama ve workflow editor."""
+    st.header("İş Akışı Motoru")
 
     # Hazır şablonlar
-    st.subheader("Hazir Is Akisi Sablonlari")
+    st.subheader("Hazır İş Akışı Şablonları")
 
     sablonlar = {
         "Standart Konut Projesi": [
             {"gorev": "Parsel analizi", "sure_gun": 2, "bagimllik": None},
-            {"gorev": "Imar parametreleri belirleme", "sure_gun": 1, "bagimllik": "Parsel analizi"},
-            {"gorev": "Fizibilite raporu", "sure_gun": 3, "bagimllik": "Imar parametreleri belirleme"},
-            {"gorev": "Kat plani tasarimi", "sure_gun": 5, "bagimllik": "Fizibilite raporu"},
-            {"gorev": "3D modelleme", "sure_gun": 3, "bagimllik": "Kat plani tasarimi"},
-            {"gorev": "Yapi ruhsati basvurusu", "sure_gun": 10, "bagimllik": "Kat plani tasarimi"},
-            {"gorev": "Insaat baslangici", "sure_gun": 0, "bagimllik": "Yapi ruhsati basvurusu"},
+            {"gorev": "İmar parametreleri belirleme", "sure_gun": 1, "bagimllik": "Parsel analizi"},
+            {"gorev": "Fizibilite raporu", "sure_gun": 3, "bagimllik": "İmar parametreleri belirleme"},
+            {"gorev": "Kat planı tasarımı", "sure_gun": 5, "bagimllik": "Fizibilite raporu"},
+            {"gorev": "3D modelleme", "sure_gun": 3, "bagimllik": "Kat planı tasarımı"},
+            {"gorev": "Yapı ruhsatı başvurusu", "sure_gun": 10, "bagimllik": "Kat planı tasarımı"},
+            {"gorev": "İnşaat başlangıcı", "sure_gun": 0, "bagimllik": "Yapı ruhsatı başvurusu"},
         ],
-        "Hizli Fizibilite": [
-            {"gorev": "Parsel secimi", "sure_gun": 1, "bagimllik": None},
-            {"gorev": "Otomatik hesaplama", "sure_gun": 0, "bagimllik": "Parsel secimi"},
+        "Hızlı Fizibilite": [
+            {"gorev": "Parsel seçimi", "sure_gun": 1, "bagimllik": None},
+            {"gorev": "Otomatik hesaplama", "sure_gun": 0, "bagimllik": "Parsel seçimi"},
             {"gorev": "Maliyet analizi", "sure_gun": 1, "bagimllik": "Otomatik hesaplama"},
-            {"gorev": "Rapor olusturma", "sure_gun": 1, "bagimllik": "Maliyet analizi"},
+            {"gorev": "Rapor oluşturma", "sure_gun": 1, "bagimllik": "Maliyet analizi"},
         ],
-        "Tam Proje Sureci": [
-            {"gorev": "Arazi kesfesi", "sure_gun": 3, "bagimllik": None},
-            {"gorev": "Jeolojik etut", "sure_gun": 15, "bagimllik": "Arazi kesfesi"},
-            {"gorev": "Mimari proje", "sure_gun": 30, "bagimllik": "Jeolojik etut"},
+        "Tam Proje Süreci": [
+            {"gorev": "Arazi keşfesi", "sure_gun": 3, "bagimllik": None},
+            {"gorev": "Jeolojik etüt", "sure_gun": 15, "bagimllik": "Arazi keşfesi"},
+            {"gorev": "Mimari proje", "sure_gun": 30, "bagimllik": "Jeolojik etüt"},
             {"gorev": "Statik proje", "sure_gun": 20, "bagimllik": "Mimari proje"},
             {"gorev": "Tesisat projeleri", "sure_gun": 15, "bagimllik": "Mimari proje"},
-            {"gorev": "Ruhsat sureci", "sure_gun": 30, "bagimllik": "Statik proje"},
-            {"gorev": "Insaat (kaba)", "sure_gun": 120, "bagimllik": "Ruhsat sureci"},
-            {"gorev": "Insaat (ince)", "sure_gun": 90, "bagimllik": "Insaat (kaba)"},
-            {"gorev": "Iskan", "sure_gun": 30, "bagimllik": "Insaat (ince)"},
+            {"gorev": "Ruhsat süreci", "sure_gun": 30, "bagimllik": "Statik proje"},
+            {"gorev": "İnşaat (kaba)", "sure_gun": 120, "bagimllik": "Ruhsat süreci"},
+            {"gorev": "İnşaat (ince)", "sure_gun": 90, "bagimllik": "İnşaat (kaba)"},
+            {"gorev": "İskân", "sure_gun": 30, "bagimllik": "İnşaat (ince)"},
         ],
     }
 
-    sablon_sec = st.selectbox("Sablon Sec", list(sablonlar.keys()),
+    sablon_sec = st.selectbox("Şablon Seç", list(sablonlar.keys()),
                                key="wf_sablon")
 
-    if st.button("Sablonu Yukle", type="primary", key="wf_yukle"):
+    if st.button("Şablonu Yükle", type="primary", key="wf_yukle"):
         st.session_state.wf_gorevler = list(sablonlar[sablon_sec])
-        st.success(f"Sablon yuklendi: {sablon_sec}")
+        st.success(f"Şablon yüklendi: {sablon_sec}")
 
     # Görev listesi
     gorevler = st.session_state.get("wf_gorevler", [])
 
     if gorevler:
-        st.subheader("Gorev Listesi")
+        st.subheader("Görev Listesi")
         import pandas as pd
         df = pd.DataFrame(gorevler)
         st.dataframe(df, use_container_width=True)
 
         # Basit Gantt görünümü
-        st.subheader("Zaman Cizelgesi")
+        st.subheader("Zaman Çizelgesi")
         cumulative_day = 0
         for g in gorevler:
             days = g["sure_gun"]
@@ -1116,21 +1260,21 @@ def sayfa_workflow():
             )
             cumulative_day += days
 
-        st.caption(f"Toplam tahmini sure: {sum(g['sure_gun'] for g in gorevler)} gun")
+        st.caption(f"Toplam tahmini süre: {sum(g['sure_gun'] for g in gorevler)} gün")
 
     # Manuel görev ekleme
-    with st.expander("Gorev Ekle", expanded=False):
+    with st.expander("Görev Ekle", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
-            yeni_gorev = st.text_input("Gorev Adi", key="wf_yeni_gorev")
+            yeni_gorev = st.text_input("Görev Adı", key="wf_yeni_gorev")
         with col2:
-            yeni_sure = st.number_input("Sure (gun)", 0, 365, 5, key="wf_yeni_sure")
+            yeni_sure = st.number_input("Süre (gün)", 0, 365, 5, key="wf_yeni_sure")
         with col3:
             mevcut = [g["gorev"] for g in gorevler] if gorevler else []
-            yeni_bag = st.selectbox("Bagimlilik",
+            yeni_bag = st.selectbox("Bağımlılık",
                                      [None] + mevcut, key="wf_yeni_bag")
 
-        if st.button("Gorev Ekle", key="wf_ekle"):
+        if st.button("Görev Ekle", key="wf_ekle"):
             if yeni_gorev:
                 if "wf_gorevler" not in st.session_state:
                     st.session_state.wf_gorevler = []
@@ -1139,7 +1283,7 @@ def sayfa_workflow():
                     "sure_gun": yeni_sure,
                     "bagimllik": yeni_bag,
                 })
-                st.success(f"Gorev eklendi: {yeni_gorev}")
+                st.success(f"Görev eklendi: {yeni_gorev}")
                 st.rerun()
 
 

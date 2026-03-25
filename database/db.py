@@ -107,5 +107,10 @@ def get_session():
     return SessionLocal()
 
 
+def get_engine():
+    """SQLAlchemy engine nesnesini döndürür."""
+    return engine
+
+
 # Uygulama başlangıcında tabloları oluştur
 init_db()
